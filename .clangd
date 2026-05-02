@@ -1,0 +1,10 @@
+CompileFlags:
+  CompilationDatabase: /workspaces/ESP32_dev/WirelessID/build
+  Add:
+    - -I/workspaces/ESP32_dev/WirelessID/main
+    - -I/workspaces/ESP32_dev/WirelessID/main/include
+    - -I/workspaces/ESP32_dev/WirelessID/build/config
+  Remove:
+    - -fno-shrink-wrap
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
