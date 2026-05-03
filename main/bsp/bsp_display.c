@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "bsp_i2c.h"
-#include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "oled_font.h"
@@ -39,7 +38,7 @@ static void apply_rot(uint8_t x, uint8_t y, uint8_t *rx, uint8_t *ry) {
 static esp_err_t oled_write_cmd(uint8_t cmd) {
   static uint8_t buf[2];
   buf[0] = OLED_CMD; buf[1] = cmd;
-  return i2c_master_transmit(s_dev, buf, sizeof(buf), pdMS_TO_TICKS(50));
+  return bsp_i2c_device_transmit(s_dev, buf, sizeof(buf), 50);
 }
 
 static esp_err_t oled_write_data(const uint8_t *data, size_t len) {
@@ -47,47 +46,40 @@ static esp_err_t oled_write_data(const uint8_t *data, size_t len) {
   static uint8_t buf[129];
   buf[0] = OLED_DATA;
   memcpy(buf + 1, data, len);
-  return i2c_master_transmit(s_dev, buf, len + 1, pdMS_TO_TICKS(100));
+  return bsp_i2c_device_transmit(s_dev, buf, len + 1, 100);
 }
 
 static void oled_set_pos(uint8_t x, uint8_t page) {
-  oled_write_cmd(0xb0 | page);
-  oled_write_cmd(((x & 0xf0) >> 4) | 0x10);
-  oled_write_cmd(x & 0x0f);
+  (void)oled_write_cmd(0xb0 | page);
+  (void)oled_write_cmd(((x & 0xf0) >> 4) | 0x10);
+  (void)oled_write_cmd(x & 0x0f);
 }
+
+#define OLED_CMD_OR_RETURN(cmd) do { esp_err_t __e = oled_write_cmd((cmd)); if (__e != ESP_OK) { ESP_LOGE(TAG, "oled cmd 0x%02x err=%d", (cmd), __e); return __e; } } while (0)
 
 esp_err_t bsp_display_init(void)
 {
-  i2c_master_bus_handle_t bus = bsp_i2c_get_bus_handle();
-  if (!bus) { ESP_LOGE(TAG, "i2c bus not ready"); return ESP_ERR_INVALID_STATE; }
+  esp_err_t ret = bsp_i2c_get_device(OLED_ADDR, WIRELESSID_DEFAULT_I2C_FREQ_HZ, &s_dev);
+  if (ret != ESP_OK) { ESP_LOGE(TAG, "get oled dev err %d", ret); return ret; }
 
-  i2c_device_config_t dev_cfg = {
-    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-    .device_address  = OLED_ADDR,
-    .scl_speed_hz    = WIRELESSID_DEFAULT_I2C_FREQ_HZ,
-  };
-
-  esp_err_t ret = i2c_master_bus_add_device(bus, &dev_cfg, &s_dev);
-  if (ret != ESP_OK) { ESP_LOGE(TAG, "add device err %d", ret); return ret; }
-
-  oled_write_cmd(0xae);
-  oled_write_cmd(0x20); oled_write_cmd(0x10);
-  oled_write_cmd(0xb0);
-  oled_write_cmd(0xc8);
-  oled_write_cmd(0x00); oled_write_cmd(0x10);
-  oled_write_cmd(0x40);
-  oled_write_cmd(0x81); oled_write_cmd(0xff);
-  oled_write_cmd(0xa1);
-  oled_write_cmd(0xa6);
-  oled_write_cmd(0xa8); oled_write_cmd(0x3f);
-  oled_write_cmd(0xa4);
-  oled_write_cmd(0xd3); oled_write_cmd(0x00);
-  oled_write_cmd(0xd5); oled_write_cmd(0xf0);
-  oled_write_cmd(0xd9); oled_write_cmd(0x22);
-  oled_write_cmd(0xda); oled_write_cmd(0x12);
-  oled_write_cmd(0xdb); oled_write_cmd(0x20);
-  oled_write_cmd(0x8d); oled_write_cmd(0x14);
-  oled_write_cmd(0xaf);
+  OLED_CMD_OR_RETURN(0xae);
+  OLED_CMD_OR_RETURN(0x20); OLED_CMD_OR_RETURN(0x10);
+  OLED_CMD_OR_RETURN(0xb0);
+  OLED_CMD_OR_RETURN(0xc8);
+  OLED_CMD_OR_RETURN(0x00); OLED_CMD_OR_RETURN(0x10);
+  OLED_CMD_OR_RETURN(0x40);
+  OLED_CMD_OR_RETURN(0x81); OLED_CMD_OR_RETURN(0xff);
+  OLED_CMD_OR_RETURN(0xa1);
+  OLED_CMD_OR_RETURN(0xa6);
+  OLED_CMD_OR_RETURN(0xa8); OLED_CMD_OR_RETURN(0x3f);
+  OLED_CMD_OR_RETURN(0xa4);
+  OLED_CMD_OR_RETURN(0xd3); OLED_CMD_OR_RETURN(0x00);
+  OLED_CMD_OR_RETURN(0xd5); OLED_CMD_OR_RETURN(0xf0);
+  OLED_CMD_OR_RETURN(0xd9); OLED_CMD_OR_RETURN(0x22);
+  OLED_CMD_OR_RETURN(0xda); OLED_CMD_OR_RETURN(0x12);
+  OLED_CMD_OR_RETURN(0xdb); OLED_CMD_OR_RETURN(0x20);
+  OLED_CMD_OR_RETURN(0x8d); OLED_CMD_OR_RETURN(0x14);
+  OLED_CMD_OR_RETURN(0xaf);
   vTaskDelay(pdMS_TO_TICKS(5));
 
   memset(disp_gram, 0, sizeof(disp_gram));

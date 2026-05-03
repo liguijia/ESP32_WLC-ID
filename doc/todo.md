@@ -325,7 +325,10 @@
 
 ### 已知待解决问题
 
-1. **I2C 驱动报错**：启用 TWAI (CAN 1Mbps) 后，OLED 每约 1s 刷新时串口伴随新 `i2c_master` API 内部 `multi_buffer_transmit` 报错。OLED 显示内容正常，但调试日志被大量 I2C 报错污染。已尝试降低 I2C 频率（400kHz→100kHz）、回退旧版 `driver/i2c.h` API（与新版冲突 abort）等方案均未根除。疑为单核 ESP32-C3 上新 `i2c_master` 驱动与 TWAI 中断/DMA 的资源冲突，需从 IDF 驱动层面或硬件层面进一步排查。
+1. ~~**I2C 驱动报错**：启用 TWAI (CAN 1Mbps) 后，OLED 每约 1s 刷新时串口伴随新 `i2c_master` API 内部 `multi_buffer_transmit` 报错。OLED 显示内容正常，但调试日志被大量 I2C 报错污染。~~ **已修复（2026-05）**。
+   - 根因：`i2c_master_transmit/receive/transmit_receive` timeout 参数单位应为毫秒 `int`，代码误传 `pdMS_TO_TICKS(...)`，导致超时语义错误并触发大量 I2C transaction failed / software timeout。
+   - 修复：统一按毫秒传 timeout；内部上拉双保险（`enable_internal_pullup` + `gpio_set_pull_mode`）；超时时 `i2c_master_bus_reset()`；OLED init 命令全链路错误检查。
+   - 结果：OLED 显示恢复正常，串口 I2C 报错消失，TWAI 收发与 OLED 并行稳定。
 
 2. **OLED 热插拔**：经评估放弃，投入产出比不高。
 
@@ -334,5 +337,5 @@
 - 当前**仍未确认**的关键点：
   - UART0 实际连线和用途
   - CAN 收发器附加控制脚
-  - I2C 外部上拉电阻情况（内部上拉 ~45kΩ 可能偏弱）
-- 下一阶段可推进方向：定位 I2C/TWAI 冲突根因、UART0 调试命令行、ESP-NOW 节点通信、红外链路验证。
+  - I2C 外部上拉电阻情况（当前可用内部上拉稳定运行，但长期建议评估外部上拉）
+- 下一阶段可推进方向：UART0 调试命令行、ESP-NOW 节点通信、红外链路验证。

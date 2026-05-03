@@ -11,28 +11,36 @@
 | WS2812B 状态灯驱动 & 效果引擎 | ✅ 完成 |
 | TWAI (CAN) 驱动, 1Mbps NO_ACK | ✅ 完成 |
 | UART0 初始化骨架 | ✅ 骨架 |
-| I2C / OLED 屏幕 (SSD1306) | ⚠️ 显示正常，串口伴随 I2C 报错 |
+| I2C / OLED 屏幕 (SSD1306) | ✅ 稳定运行（已修复 I2C 报错） |
 | KEY 按键初始化骨架 | ✅ 骨架 |
 | ESP-NOW 初始化骨架 | ✅ 骨架 |
 | 红外 UART + 38kHz carrier 骨架 | ✅ 骨架 |
 
 ## 已知问题 (Known Issues)
 
-### I2C / OLED 串口报错
+### I2C / OLED 历史问题（已修复）
 
-OLED 显示功能正常，但启用 TWAI (CAN) 后串口每隔约 1s 输出大量 I2C 驱动报错：
+历史现象：串口持续输出以下报错，伴随 `I2C software timeout`，严重时 OLED 黑屏：
 
 ```
 E (xxxxx) i2c.master: s_i2c_synchronous_transaction(945): I2C transaction failed
 E (xxxxx) i2c.master: i2c_master_multi_buffer_transmit(1207): I2C transaction failed
 ```
 
-**排查方向**：
-- 新 `i2c_master` API 与 TWAI (CAN 1Mbps) 的中断/DMA 可能存在资源冲突
-- ESP32-C3 单核，I2C 与 TWAI 共用 APB 总线及中断控制器
-- 已尝试旧版 `driver/i2c.h` API（与新版冲突 abort）、降低 I2C 频率等，均未根除
-- 不影响 OLED 实际显示效果，但串口日志被污染
-- **待进一步硬件/驱动层面排查**
+**本次根因定位**（基于 ESP-IDF v5.4 官方 `i2c_master` API 语义）：
+- `i2c_master_transmit/receive/transmit_receive` 的 timeout 参数单位是 **毫秒（int）**，不是 `TickType_t`
+- 代码中将 `pdMS_TO_TICKS(...)` 结果传入上述 API，导致超时参数语义错误，引发连续事务失败与软件超时
+
+**修复动作**：
+- 统一将 I2C 事务 timeout 改为毫秒 int（如 50/100）
+- 保留并显式启用 I2C 内部上拉（`enable_internal_pullup` + `gpio_set_pull_mode(..., GPIO_PULLUP_ONLY)`）
+- 发生 `ESP_ERR_TIMEOUT` 时执行 `i2c_master_bus_reset()` 尝试总线恢复
+- OLED init 全部命令增加返回值检查，避免“失败却打印 `oled ok`”的假成功
+
+**当前结果**：
+- OLED 显示正常
+- 串口 I2C 报错消失
+- TWAI 收发正常并可与 OLED 同时稳定运行
 
 ## WS2812B 状态灯 API
 
