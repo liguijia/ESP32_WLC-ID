@@ -1,14 +1,16 @@
 #include "bsp_uart0.h"
 
 #include "driver/uart.h"
+#include "esp_vfs_dev.h"
 #include "pinmux_uart.h"
 
-#define BSP_UART0_RX_BUFFER_SIZE 1024
-#define BSP_UART0_TX_BUFFER_SIZE 0
-#define BSP_UART0_EVENT_QUEUE_SIZE 0
+#define BSP_UART0_RX_BUFFER_SIZE 4096
+#define BSP_UART0_TX_BUFFER_SIZE 1024
+#define BSP_UART0_EVENT_QUEUE_SIZE 32
 
 static const char *TAG = "bsp_uart0";
 static bool s_uart0_initialized;
+static QueueHandle_t s_uart0_queue;
 
 esp_err_t bsp_uart0_init(void)
 {
@@ -45,10 +47,13 @@ esp_err_t bsp_uart0_init(void)
             BSP_UART0_RX_BUFFER_SIZE,
             BSP_UART0_TX_BUFFER_SIZE,
             BSP_UART0_EVENT_QUEUE_SIZE,
-            NULL,
+            &s_uart0_queue,
             0),
         TAG,
         "uart0 driver install failed");
+
+    // 让 UART0 的 VFS 路径走 driver，避免与 console 输入路径冲突
+    esp_vfs_dev_uart_use_driver(config->port);
 
     s_uart0_initialized = true;
     return ESP_OK;
@@ -74,4 +79,27 @@ int bsp_uart0_read(uint8_t *buf, size_t len, TickType_t ticks_to_wait)
     }
 
     return uart_read_bytes(config->port, buf, len, ticks_to_wait);
+}
+
+QueueHandle_t bsp_uart0_get_event_queue(void)
+{
+    return s_uart0_queue;
+}
+
+esp_err_t bsp_uart0_get_buffered_data_len(size_t *len)
+{
+    const pinmux_uart_config_t *config = pinmux_uart0_get_config();
+    if (!s_uart0_initialized || len == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return uart_get_buffered_data_len(config->port, len);
+}
+
+esp_err_t bsp_uart0_flush_input(void)
+{
+    const pinmux_uart_config_t *config = pinmux_uart0_get_config();
+    if (!s_uart0_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return uart_flush_input(config->port);
 }

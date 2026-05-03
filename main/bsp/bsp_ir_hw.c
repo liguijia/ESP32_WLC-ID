@@ -2,6 +2,9 @@
 
 #include "bsp_ir_carrier.h"
 #include "bsp_ir_uart.h"
+#include "esp_log.h"
+
+static const char *TAG = "bsp_ir_hw";
 
 esp_err_t bsp_ir_hw_init(void)
 {
@@ -9,13 +12,16 @@ esp_err_t bsp_ir_hw_init(void)
     esp_err_t carrier_ret = bsp_ir_carrier_init();
 
     if (uart_ret != ESP_OK) {
+        ESP_LOGE(TAG, "ir uart init failed: %d", uart_ret);
         return uart_ret;
     }
 
     if (carrier_ret != ESP_OK) {
+        ESP_LOGE(TAG, "ir carrier init failed: %d", carrier_ret);
         return carrier_ret;
     }
 
+    ESP_LOGI(TAG, "ir hw init ok (uart + carrier)");
     return bsp_ir_carrier_set_enabled(false);
 }
 

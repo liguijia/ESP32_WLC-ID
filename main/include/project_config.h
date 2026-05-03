@@ -12,5 +12,17 @@
 #define WIRELESSID_DEFAULT_IR_CARRIER_DUTY_PERCENT 33
 #define WIRELESSID_DEFAULT_TWAI_BAUD_RATE 1000000
 
+// ===== Debug/Test feature switches =====
+// UART0 loopback test: RX callback echoes data back
+#define WIRELESSID_UART0_LOOPBACK_TEST_ENABLE 0
+// UART0 alive probe: periodically send "U0_TX_ALIVE"
+#define WIRELESSID_UART0_ALIVE_PROBE_ENABLE 0
+// TWAI periodic test TX in app_main loop
+#define WIRELESSID_TWAI_TEST_TX_ENABLE 1
+// IR TX test: periodically send test frame via infrared
+#define WIRELESSID_IR_TEST_TX_ENABLE 0
+// IR RX test: receive IR data and print to log
+#define WIRELESSID_IR_TEST_RX_ENABLE 1
+
 #define WIRELESSID_STATUS_TASK_STACK_SIZE 4096
 #define WIRELESSID_STATUS_TASK_PRIORITY 5

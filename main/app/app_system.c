@@ -1,13 +1,13 @@
 #include "app_system.h"
 
 #include "app_status.h"
+#include "app_uart0.h"
 #include "bsp_display.h"
 #include "bsp_espnow.h"
 #include "bsp_i2c.h"
 #include "bsp_ir_hw.h"
 #include "bsp_key.h"
 #include "bsp_twai.h"
-#include "bsp_uart0.h"
 #include "bsp_ws2812.h"
 #include "esp_log.h"
 #include "pinmux_board.h"
@@ -15,7 +15,7 @@
 
 static const char *TAG = WIRELESSID_LOG_TAG;
 
-esp_err_t app_system_init(void) {
+esp_err_t app_system_init_with_uart0_mode(app_uart0_mode_t uart0_mode) {
   esp_err_t ret;
 
   app_status_init();
@@ -30,8 +30,12 @@ esp_err_t app_system_init(void) {
   ret = bsp_key_init();
   app_status_set_key_ready(ret == ESP_OK);
 
-  ret = bsp_uart0_init();
+  ret = app_uart0_init(uart0_mode);
   app_status_set_uart0_ready(ret == ESP_OK);
+  if (ret == ESP_OK) {
+    ret = app_uart0_start();
+    app_status_set_uart0_ready(ret == ESP_OK);
+  }
 
   ret = bsp_i2c_init();
   app_status_set_display_ready(false);
@@ -51,6 +55,10 @@ esp_err_t app_system_init(void) {
   app_status_set_ir_ready(ret == ESP_OK);
 
   return ESP_OK;
+}
+
+esp_err_t app_system_init(void) {
+  return app_system_init_with_uart0_mode(APP_UART0_MODE_DEBUG);
 }
 
 void app_system_start(void) {

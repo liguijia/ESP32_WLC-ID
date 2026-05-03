@@ -10,11 +10,11 @@
 | 系统入口 & 心跳日志 | ✅ 完成 |
 | WS2812B 状态灯驱动 & 效果引擎 | ✅ 完成 |
 | TWAI (CAN) 驱动, 1Mbps NO_ACK | ✅ 完成 |
-| UART0 初始化骨架 | ✅ 骨架 |
+| UART0 应用层收发 (`app_uart0`) | ✅ 已接入（含模式切换/统计） |
 | I2C / OLED 屏幕 (SSD1306) | ✅ 稳定运行（已修复 I2C 报错） |
 | KEY 按键初始化骨架 | ✅ 骨架 |
 | ESP-NOW 初始化骨架 | ✅ 骨架 |
-| 红外 UART + 38kHz carrier 骨架 | ✅ 骨架 |
+| 红外串口 (UART1 + 38kHz carrier) | ✅ BSP 完成，硬件链路验证通过 |
 
 ## 已知问题 (Known Issues)
 
@@ -130,6 +130,70 @@ bsp_twai_filter_t filters[] = {
 };
 bsp_twai_config_filter(filters, 1);
 ```
+
+## UART0 API（应用层）
+
+**文件**: `app/include/app_uart0.h`
+
+```c
+// 模式
+app_uart0_init(APP_UART0_MODE_DEBUG);
+app_uart0_init(APP_UART0_MODE_NORMAL); // 尽量静默，仅保留业务数据
+
+// 启动接收任务
+app_uart0_start();
+
+// 发送
+app_uart0_send(data, len);
+
+// 接收回调
+void on_uart0_rx(const uint8_t *data, size_t len) { ... }
+app_uart0_set_rx_cb(on_uart0_rx);
+
+// 统计
+app_uart0_stats_t st;
+app_uart0_get_stats(&st);
+```
+
+### UART0 高吞吐优化（2026-05）
+
+- BSP 层：
+  - `uart_driver_install` 升级为 `RX=4096, TX=1024, event queue=32`
+  - 导出事件队列与缓冲长度接口：
+    - `bsp_uart0_get_event_queue()`
+    - `bsp_uart0_get_buffered_data_len()`
+    - `bsp_uart0_flush_input()`
+- APP 层：
+  - RX 由轮询改为 **UART 事件驱动**（`UART_DATA` 触发批量读）
+  - 增加应用层 **RingBuffer(4096B)**，降低连续突发数据丢失概率
+  - 对 `UART_FIFO_OVF/UART_BUFFER_FULL` 增加清空与队列复位处理
+
+> 说明：串口是字节流，仍可能出现“分包边界与发送侧不一致”的表现；如需严格帧边界，需在协议层增加帧头/长度/CRC。
+
+### UART0 复用注意事项（当前卡点）
+
+- 当前板级若出现“板载 USB2TTL + 外置 USB2TTL 同时并联到 UART0 TX/RX”，会导致 **RX 方向高概率冲突**。
+- 实测现象：`TX` 主动发送稳定（可见 `U0_TX_ALIVE`），但 `RX` 回调不触发（无回环）。
+- 对照验证：仅保留板载 USB2TTL（不并联外置 USB2TTL）时，外部串口终端输入 `111` 连续 7 次可正确回显，说明软件回环逻辑正常，失败根因确认为并联冲突。
+- 建议：业务测试时确保 `U0RXD` 仅有一个上位机 `TX` 驱动；必要时通过跳帽/0Ω 电阻/三态缓冲隔离板载 USB2TTL。
+- 已在 BSP 初始化中启用 `esp_vfs_dev_uart_use_driver(UART0)`，减少 console 路径干扰。
+
+### UART0 硬件改进方向（已确认）
+
+- 受限条件：`UART1` 已用于红外链路，业务串口只能继续使用 `UART0`。
+- 改进策略：
+  1. 保留板载 USB2TTL + 自动下载电路，继续用于下载/救援；
+  2. 在应用启动后，将 `UART0` 通过 GPIO matrix 重映射到独立业务 IO（计划 `IO18/IO19`）；
+  3. 运行期 `UART0` 以普通串口模式工作，尽量关闭调试输出，减少非业务数据干扰。
+- 预期收益：避免板载串口与对外业务串口物理并联冲突，同时保留可下载能力。
+
+### 当前调试开关（`project_config.h`）
+
+- `WIRELESSID_UART0_LOOPBACK_TEST_ENABLE`
+- `WIRELESSID_UART0_ALIVE_PROBE_ENABLE`
+- `WIRELESSID_TWAI_TEST_TX_ENABLE`
+
+> 建议量产前统一关闭测试开关，避免业务串口被测试数据污染。
 
 ## 常用命令
 
