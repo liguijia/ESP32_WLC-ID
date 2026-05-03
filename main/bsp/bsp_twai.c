@@ -1,5 +1,6 @@
 #include "bsp_twai.h"
 
+#include <inttypes.h>
 #include <string.h>
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -89,7 +90,7 @@ static esp_err_t do_init(uint32_t baud_rate, twai_mode_t mode)
     s_started = true;
     s_baud = baud_rate;
 
-    ESP_LOGI(TAG, "init baud=%lu mode=%d", baud_rate, mode);
+    ESP_LOGI(TAG, "init baud=%" PRIu32 " mode=%d", baud_rate, mode);
     return ESP_OK;
 }
 
