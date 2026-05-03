@@ -22,7 +22,7 @@ esp_err_t bsp_ir_hw_init(void)
     }
 
     ESP_LOGI(TAG, "ir hw init ok (uart + carrier)");
-    return bsp_ir_carrier_set_enabled(false);
+    return bsp_ir_carrier_set_enabled(true);
 }
 
 esp_err_t bsp_ir_hw_enable_tx_carrier(bool enabled)
@@ -41,16 +41,11 @@ int bsp_ir_hw_write(const void *data, size_t len)
         return -1;
     }
 
-    if (bsp_ir_carrier_set_enabled(true) != ESP_OK) {
-        return -1;
-    }
-
     int written = bsp_ir_uart_write(data, len);
     if (written > 0) {
         (void)bsp_ir_uart_wait_tx_done(pdMS_TO_TICKS(1000));
     }
 
-    (void)bsp_ir_carrier_set_enabled(false);
     return written;
 }
 
