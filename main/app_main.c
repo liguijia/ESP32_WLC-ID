@@ -23,7 +23,15 @@ static void ir_app_rx_cb(const uint8_t *data, size_t len) {
     return;
   }
 
-  ESP_LOGI(TAG, "IR RX[%d]: %.*s", (int)len, (int)len, data);
+  bsp_twai_msg_t can_msg;
+  esp_err_t ret = app_ir_parse_can(data, len, &can_msg);
+  if (ret == ESP_OK) {
+    ESP_LOGI(TAG, "IR RX CAN id=0x%03" PRIx32 " dlc=%d", can_msg.id,
+             can_msg.dlc);
+    app_twai_transmit(&can_msg, pdMS_TO_TICKS(10));
+  } else {
+    ESP_LOGW(TAG, "IR RX parse err: %d", ret);
+  }
 }
 #endif
 
@@ -63,19 +71,20 @@ void app_main(void) {
 
 #if WIRELESSID_IR_TEST_TX_ENABLE
     {
-      char ir_payload[32];
-      int ir_len = snprintf(ir_payload, sizeof(ir_payload), "IR_HB:%" PRIu32,
-                            heartbeat_count);
-      if (ir_len > 0) {
-        esp_err_t ret = app_ir_send(ir_payload, (size_t)ir_len);
-        if (ret == ESP_OK) {
-          app_ir_stats_t ir_st;
-          app_ir_get_stats(&ir_st);
-          ESP_LOGI(TAG, "IR TX[%d]: %s", ir_len, ir_payload);
-          bsp_display_printf(3, 0, "IR TX:%" PRIu32, ir_st.tx_frames);
-        } else {
-          ESP_LOGW(TAG, "IR TX failed: %d", ret);
-        }
+      bsp_twai_msg_t ir_can = {
+          .id = 0x114,
+          .dlc = 8,
+          .data = {0, 1, 2, 3, 4, 5, 6, 7},
+      };
+      ir_can.data[0] = (uint8_t)(heartbeat_count & 0xFF);
+      esp_err_t ret = app_ir_send_can(&ir_can);
+      if (ret == ESP_OK) {
+        app_ir_stats_t ir_st;
+        app_ir_get_stats(&ir_st);
+        ESP_LOGI(TAG, "IR TX CAN id=0x%03" PRIx32, ir_can.id);
+        bsp_display_printf(3, 0, "IR TX:%" PRIu32, ir_st.tx_frames);
+      } else {
+        ESP_LOGW(TAG, "IR TX failed: %d", ret);
       }
     }
 #endif

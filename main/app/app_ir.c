@@ -198,3 +198,41 @@ void app_ir_get_stats(app_ir_stats_t *stats)
         *stats = s_stats;
     }
 }
+
+esp_err_t app_ir_send_can(const bsp_twai_msg_t *msg)
+{
+    if (msg == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t payload[11];
+    size_t dlc = msg->dlc > 8 ? 8 : msg->dlc;
+
+    payload[0] = (uint8_t)(msg->id & 0xFF);
+    payload[1] = (uint8_t)((msg->id >> 8) & 0x07);
+    payload[2] = (uint8_t)dlc;
+    memcpy(&payload[3], msg->data, dlc);
+
+    return app_ir_send(payload, 3 + dlc);
+}
+
+esp_err_t app_ir_parse_can(const uint8_t *payload, size_t payload_len, bsp_twai_msg_t *msg)
+{
+    if (payload == NULL || msg == NULL || payload_len < 3) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint16_t id = (uint16_t)payload[0] | ((uint16_t)(payload[1] & 0x07) << 8);
+    uint8_t dlc = payload[2];
+
+    if (dlc > 8 || payload_len < (size_t)(3 + dlc)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    memset(msg, 0, sizeof(*msg));
+    msg->id = id;
+    msg->dlc = dlc;
+    memcpy(msg->data, &payload[3], dlc);
+
+    return ESP_OK;
+}

@@ -63,7 +63,7 @@ static void app_twai_handle_tx_success_alert(void) {
 }
 
 static void app_twai_handle_error_alert(uint32_t alerts,
-                                        uint32_t *last_err_ms) {
+                                         uint32_t *last_err_ms) {
   uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
   if (now - *last_err_ms < APP_TWAI_ERR_LOG_MS) {
     return;
@@ -73,6 +73,11 @@ static void app_twai_handle_error_alert(uint32_t alerts,
   bsp_twai_get_status(&st);
   app_twai_dispatch_err(alerts, st.tx_error_counter, st.rx_error_counter);
   *last_err_ms = now;
+
+  if (alerts & TWAI_ALERT_BUS_OFF) {
+    ESP_LOGW(TAG, "Bus-off detected, initiating recovery...");
+    twai_initiate_recovery();
+  }
 }
 
 static void twai_task(void *arg) {

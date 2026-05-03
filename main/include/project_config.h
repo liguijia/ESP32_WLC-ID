@@ -18,7 +18,7 @@
 // UART0 alive probe: periodically send "U0_TX_ALIVE"
 #define WIRELESSID_UART0_ALIVE_PROBE_ENABLE 0
 // TWAI periodic test TX in app_main loop
-#define WIRELESSID_TWAI_TEST_TX_ENABLE 1
+#define WIRELESSID_TWAI_TEST_TX_ENABLE 0
 // IR TX test: periodically send test frame via infrared
 #define WIRELESSID_IR_TEST_TX_ENABLE 0
 // IR RX test: receive IR data and print to log
