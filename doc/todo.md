@@ -379,24 +379,30 @@
   - 红外 BSP 层完整实现：`bsp_ir_uart`（UART1 驱动）+ `bsp_ir_carrier`（38kHz PWM）+ `bsp_ir_hw`（聚合层）。
   - 红外协议层 `app_ir`：帧格式（0xAA55 + 长度 + 数据 + CRC16）、接收任务、回调机制、统计接口。
   - 红外测试框架：`WIRELESSID_IR_TEST_TX/RX_ENABLE` 开关。
-  - OLED 显示红外状态：`IR 4800`、`IR RX:n E:n`。
+  - OLED 显示红外状态。
   - **硬件链路验证通过**：发射端 IR LED 驱动正常，接收端 RX 计数按预期增长。
   - **协议层验证通过**：4800 波特率下帧格式解析成功，CRC 校验正常工作。
   - **载波常驻方案**：38kHz 载波一直开启，与门自动根据 UART TX 信号调制。
   - **CAN-IR 桥接验证通过（2026-05）**：TX → IR → RX → TWAI 链路完整跑通。
-    - `app_ir_send_can()`：将 CAN 帧转为红外 payload 发送
-    - `app_ir_parse_can()`：从红外 payload 解析出 CAN 帧
-    - RX 板子收到红外数据后成功通过 TWAI 转发
-  - **TWAI bus-off 自动恢复**：发送前检测 bus-off 状态，自动重新初始化驱动
-  - **25Hz 稳定性测试通过**：连续发送 2k+ 帧无卡死
-  - **代码结构优化**：测试逻辑分离到 `app_devtest` 模块，`app_main` 保持简洁
+  - **TWAI bus-off 自动恢复**：发送前检测 bus-off 状态，自动重新初始化驱动。
+  - **25Hz 稳定性测试通过**：连续发送 2k+ 帧无卡死。
+  - **代码结构优化**：测试逻辑分离到 `app_devtest` 模块，`app_main` 保持简洁。
+  - **红外主从协议实现（2026-05）**：
+    - 面向对象设计：`ir_master_t` / `ir_slave_t` 结构体 + 方法。
+    - 帧格式：header(0xAA55) + ctrl + master_id + slave_id + data + seq + CRC16。
+    - 控制字支持：CMD / CMD_REQ / RSP / DATA / BCAST。
+    - 主从通信验证通过：主机发送 CMD_REQ，从机处理后返回 RSP，数据正确（`rsp_len=3 rsp=[aa bb xx]`）。
+    - 红外回声过滤：发送后 50ms 静默窗口，防止自身发射反射干扰。
+    - Mutex 保护共享数据，避免竞态条件。
+    - 500ms 超时，单次发送不重试，接受红外固有丢包。
+    - 双板实测成功率约 65%，符合红外信道预期。
 - 关键发现：
   - 9600 波特率下数据丢失严重（红外接收头响应速度限制）。
   - 4800 波特率下传输稳定，偶有 CRC 错误但可接受。
-  - 载波开关时序不再是问题（采用常驻方案）。
-  - `app_ir_parse_can` 需要处理 payload（不含帧头），而非完整帧。
+  - 红外发射会反射回自身接收端，必须做回声过滤。
+  - `__attribute__((packed))` + `data[]` 柔性数组在 RISC-V 上需注意对齐。
   - TWAI 在无应答设备时会累积错误进入 bus-off，需要自动恢复机制。
 - 下一步：
-  - 优化协议层：增加重发机制、超时处理。
+  - 优化协议层：减小帧开销提高有效吞吐率。
   - 增加链路统计：接收成功率、CRC 错误率。
   - 设计桥接模式：IR <-> ESP-NOW。

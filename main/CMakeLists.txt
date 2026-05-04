@@ -25,6 +25,8 @@ idf_component_register(
         "app/app_twai.c"
         "app/app_uart0.c"
         "app/app_ir.c"
+        "app/app_ir_master.c"
+        "app/app_ir_slave.c"
         "app/app_devtest.c"
     INCLUDE_DIRS
         "."

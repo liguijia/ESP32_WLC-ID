@@ -13,6 +13,7 @@
 | UART0 应用层收发 (`app_uart0`) | ✅ 已接入（含模式切换/统计） |
 | I2C / OLED 屏幕 (SSD1306) | ✅ 稳定运行（已修复 I2C 报错） |
 | 红外串口 (app_ir + CAN 桥接) | ✅ 完成（TX→IR→RX→TWAI 链路验证通过，25Hz 稳定） |
+| 红外主从协议 (ir_master/ir_slave) | ✅ 完成（CMD_REQ/RSP 双向通信，~65% 成功率） |
 | 开发测试框架 (app_devtest) | ✅ 测试逻辑与主程序分离 |
 | KEY 按键初始化骨架 | ✅ 骨架 |
 | ESP-NOW 初始化骨架 | ✅ 骨架 |
@@ -24,13 +25,15 @@ main/
 ├── app_main.c           # 简洁入口（初始化 + 启动测试）
 ├── app/
 │   ├── app_devtest.c    # 开发测试逻辑
-│   ├── app_ir.c         # 红外协议层接口
+│   ├── app_ir.c         # 红外底层帧收发
+│   ├── app_ir_master.c  # 红外主从协议 - 主机
+│   ├── app_ir_slave.c   # 红外主从协议 - 从机
 │   ├── app_twai.c       # TWAI 应用层接口
 │   ├── app_uart0.c      # UART0 应用层接口
 │   └── ...
 ├── bsp/                 # 硬件驱动层
 ├── pinmux/              # 引脚配置
-└── include/             # 公共配置
+└── include/             # 公共配置（含 ir_proto_common.h）
 ```
 
 ## 已知问题 (Known Issues)
