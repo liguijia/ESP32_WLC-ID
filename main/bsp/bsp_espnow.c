@@ -1,6 +1,8 @@
 #include "bsp_espnow.h"
 
+#include <string.h>
 #include "esp_event.h"
+#include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
@@ -12,6 +14,7 @@ static bool s_espnow_initialized;
 
 static void bsp_espnow_on_send(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
+    ESP_LOGI(TAG, "send cb status=%d", status);
     if (s_send_cb != NULL) {
         s_send_cb(mac_addr, status);
     }
@@ -19,6 +22,7 @@ static void bsp_espnow_on_send(const uint8_t *mac_addr, esp_now_send_status_t st
 
 static void bsp_espnow_on_recv(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
+    ESP_LOGI(TAG, "recv cb len=%d", len);
     if (s_recv_cb != NULL && recv_info != NULL) {
         s_recv_cb(recv_info->src_addr, data, len);
     }
@@ -53,7 +57,20 @@ esp_err_t bsp_espnow_init(void)
     ESP_RETURN_ON_ERROR(esp_now_register_send_cb(bsp_espnow_on_send), TAG, "esp-now send cb failed");
     ESP_RETURN_ON_ERROR(esp_now_register_recv_cb(bsp_espnow_on_recv), TAG, "esp-now recv cb failed");
 
+    uint8_t broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    esp_now_peer_info_t broadcast_peer = {
+        .channel = 0,
+        .ifidx = WIFI_IF_STA,
+        .encrypt = false,
+    };
+    memcpy(broadcast_peer.peer_addr, broadcast_mac, 6);
+    esp_err_t add_ret = esp_now_add_peer(&broadcast_peer);
+    if (add_ret != ESP_OK && add_ret != ESP_ERR_ESPNOW_EXIST) {
+        ESP_LOGW(TAG, "add broadcast peer failed: %d", add_ret);
+    }
+
     s_espnow_initialized = true;
+    ESP_LOGI(TAG, "espnow init ok");
     return ESP_OK;
 }
 

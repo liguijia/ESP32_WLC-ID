@@ -22,7 +22,13 @@
 // IR TX test: periodically send test frame via infrared
 #define WIRELESSID_IR_TEST_TX_ENABLE 0
 // IR RX test: receive IR data and print to log
-#define WIRELESSID_IR_TEST_RX_ENABLE 1
+#define WIRELESSID_IR_TEST_RX_ENABLE 0
+// ESP-NOW base test: broadcast data, devices echo back
+#define WIRELESSID_ESPNOW_BASE_ENABLE 1
+// ESP-NOW device test: receive broadcast and echo back
+#define WIRELESSID_ESPNOW_DEVICE_ENABLE 0
+
+#define WIRELESSID_DEVICE_ID 0x01
 
 #define WIRELESSID_STATUS_TASK_STACK_SIZE 4096
 #define WIRELESSID_STATUS_TASK_PRIORITY 5

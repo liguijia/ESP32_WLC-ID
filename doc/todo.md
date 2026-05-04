@@ -156,13 +156,15 @@
 
 ### 4.3 ESP-NOW 组网
 
-- [ ] 初始化 Wi-Fi STA 模式并启用 ESP-NOW。
-- [ ] 定义设备角色：主节点 / 从节点 / 中继节点（如需要）。
-- [ ] 设计设备发现、配对、白名单机制。
-- [ ] 设计广播与单播数据格式。
+- [x] 初始化 Wi-Fi STA 模式并启用 ESP-NOW。
+- [x] BSP 层 `bsp_espnow`：初始化、广播 peer 自动添加、收发回调。
+- [x] 基站协议 `app_espnow`：面向对象设计（`espnow_base_t`），广播/单播/peer 管理。
+- [x] 设备协议 `app_espnow_device`：面向对象设计（`espnow_device_t`），接收/应答/announce。
+- [x] 帧格式复用 IR 协议：`0xAA55 + ctrl + src_id + dst_id + data + seq + crc`。
+- [x] **基础广播通信验证通过（2026-05）**：基站 10Hz 广播，设备端接收几乎无丢包。
+- [ ] 设备发现流程（DISCOVER/ANNOUNCE）。
+- [ ] 单播 CMD_REQ/RSP 测试。
 - [ ] 设计节点心跳、在线状态和超时剔除机制。
-- [ ] 设计网络调试信息在串口和屏幕上的展示。
-- [ ] 预留配置项：频道、PMK/LMK、重发次数、最大 payload。
 - [ ] 设计与 CAN/红外串口的桥接转发策略。
 
 ### 4.4 I2C 屏幕显示
@@ -406,3 +408,22 @@
   - 优化协议层：减小帧开销提高有效吞吐率。
   - 增加链路统计：接收成功率、CRC 错误率。
   - 设计桥接模式：IR <-> ESP-NOW。
+
+### 本轮进度更新（ESP-NOW 组网，2026-05）
+
+- 已完成：
+  - BSP 层 `bsp_espnow`：Wi-Fi STA 初始化、ESP-NOW 初始化、广播 peer 自动添加、收发回调。
+  - 基站协议 `app_espnow`：面向对象设计（`espnow_base_t`），广播/单播/peer 管理/统计。
+  - 设备协议 `app_espnow_device`：面向对象设计（`espnow_device_t`），接收/应答/announce。
+  - 帧格式复用 IR 协议：`0xAA55 + ctrl + src_id + dst_id + data + seq + crc`。
+  - **基础广播通信验证通过**：基站 10Hz 广播，设备端接收几乎无丢包。
+  - 配置开关：`ESPNOW_BASE_ENABLE` / `ESPNOW_DEVICE_ENABLE` / `DEVICE_ID`。
+  - ESP-NOW 设计文档：`doc/espnow_design.md`。
+- 关键发现：
+  - ESP-NOW 即使广播也需要先添加广播 peer（`FF:FF:FF:FF:FF:FF`）。
+  - ESP32-C3-WROOM-02U 必须接外置天线，否则信号极弱。
+  - ESP-NOW 延迟 <5ms，可靠性 >99%，远优于红外。
+- 下一步：
+  - 设备发现流程（DISCOVER/ANNOUNCE）。
+  - 单播 CMD_REQ/RSP 测试。
+  - IR ↔ ESP-NOW 桥接。

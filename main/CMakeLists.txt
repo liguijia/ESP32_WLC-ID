@@ -27,6 +27,8 @@ idf_component_register(
         "app/app_ir.c"
         "app/app_ir_master.c"
         "app/app_ir_slave.c"
+        "app/app_espnow.c"
+        "app/app_espnow_device.c"
         "app/app_devtest.c"
     INCLUDE_DIRS
         "."
@@ -39,6 +41,7 @@ idf_component_register(
         esp_driver_rmt
         esp_event
         esp_netif
+        esp_timer
         esp_wifi
         nvs_flash
 )
