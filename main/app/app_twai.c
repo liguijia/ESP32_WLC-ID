@@ -73,16 +73,10 @@ static void app_twai_handle_error_alert(uint32_t alerts,
   bsp_twai_get_status(&st);
   app_twai_dispatch_err(alerts, st.tx_error_counter, st.rx_error_counter);
   *last_err_ms = now;
-
-  if (alerts & TWAI_ALERT_BUS_OFF) {
-    ESP_LOGW(TAG, "Bus-off detected, initiating recovery...");
-    twai_initiate_recovery();
-  }
 }
 
 static void twai_task(void *arg) {
   (void)arg;
-  uint32_t last_err_ms = 0;
 
   while (1) {
     if (!bsp_twai_is_started()) {
@@ -97,14 +91,7 @@ static void twai_task(void *arg) {
       app_twai_handle_rx_alert();
     }
 
-    if (alerts & TWAI_ALERT_TX_SUCCESS) {
-      app_twai_handle_tx_success_alert();
-    }
-
-    if (alerts & (TWAI_ALERT_BUS_ERROR | TWAI_ALERT_ABOVE_ERR_WARN |
-                  TWAI_ALERT_ERR_PASS | TWAI_ALERT_BUS_OFF)) {
-      app_twai_handle_error_alert(alerts, &last_err_ms);
-    }
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 

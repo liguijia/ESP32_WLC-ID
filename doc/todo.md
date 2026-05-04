@@ -352,7 +352,7 @@
 
 3. **OLED 旋转方向**：当前 `bsp_display_init()` 中硬件 seg/com 映射为硬编码（0xc8/0xa1），`bsp_display_set_rotation()` 仅控制 `draw_point` 软件坐标变换。如需更改硬件方向需直接修改 init 序列。
 
-4. **TWAI bus-off 恢复（待测试）**：已添加 `twai_initiate_recovery()` 处理 bus-off 状态，需要测试断开红外后重新连接是否能恢复 TWAI 发送。
+4. ~~**TWAI bus-off 恢复**~~ **已解决（2026-05）**：发送前检测 bus-off 状态，自动重新初始化驱动。25Hz 稳定性测试通过（2k+ 帧无卡死）。
 
 - 当前**仍未确认**的关键点：
   - UART0 实际连线和用途
@@ -387,15 +387,15 @@
     - `app_ir_send_can()`：将 CAN 帧转为红外 payload 发送
     - `app_ir_parse_can()`：从红外 payload 解析出 CAN 帧
     - RX 板子收到红外数据后成功通过 TWAI 转发
-  - **TWAI bus-off 恢复（待测试）**：添加 `twai_initiate_recovery()` 处理 bus-off 状态
+  - **TWAI bus-off 自动恢复**：发送前检测 bus-off 状态，自动重新初始化驱动
+  - **25Hz 稳定性测试通过**：连续发送 2k+ 帧无卡死
 - 关键发现：
   - 9600 波特率下数据丢失严重（红外接收头响应速度限制）。
   - 4800 波特率下传输稳定，偶有 CRC 错误但可接受。
   - 载波开关时序不再是问题（采用常驻方案）。
   - `app_ir_parse_can` 需要处理 payload（不含帧头），而非完整帧。
-  - TWAI 需要处理 bus-off 恢复，否则断开后无法继续发送。
+  - TWAI 在无应答设备时会累积错误进入 bus-off，需要自动恢复机制。
 - 下一步：
-  - 测试 TWAI bus-off 恢复功能。
   - 优化协议层：增加重发机制、超时处理。
   - 增加链路统计：接收成功率、CRC 错误率。
   - 设计桥接模式：IR <-> ESP-NOW。

@@ -20,9 +20,9 @@
 // TWAI periodic test TX in app_main loop
 #define WIRELESSID_TWAI_TEST_TX_ENABLE 0
 // IR TX test: periodically send test frame via infrared
-#define WIRELESSID_IR_TEST_TX_ENABLE 0
+#define WIRELESSID_IR_TEST_TX_ENABLE 1
 // IR RX test: receive IR data and print to log
-#define WIRELESSID_IR_TEST_RX_ENABLE 1
+#define WIRELESSID_IR_TEST_RX_ENABLE 0
 
 #define WIRELESSID_STATUS_TASK_STACK_SIZE 4096
 #define WIRELESSID_STATUS_TASK_PRIORITY 5

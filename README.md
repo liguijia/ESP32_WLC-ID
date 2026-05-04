@@ -9,10 +9,10 @@
 | 工程架构 (app/bsp/pinmux 分层) | ✅ 完成 |
 | 系统入口 & 心跳日志 | ✅ 完成 |
 | WS2812B 状态灯驱动 & 效果引擎 | ✅ 完成 |
-| TWAI (CAN) 驱动, 1Mbps NO_ACK | ✅ 完成 |
+| TWAI (CAN) 驱动, 1Mbps NO_ACK | ✅ 完成（含 bus-off 自动恢复） |
 | UART0 应用层收发 (`app_uart0`) | ✅ 已接入（含模式切换/统计） |
 | I2C / OLED 屏幕 (SSD1306) | ✅ 稳定运行（已修复 I2C 报错） |
-| 红外串口 (app_ir + CAN 桥接) | ✅ 完成（TX→IR→RX→TWAI 链路验证通过） |
+| 红外串口 (app_ir + CAN 桥接) | ✅ 完成（TX→IR→RX→TWAI 链路验证通过，25Hz 稳定） |
 | KEY 按键初始化骨架 | ✅ 骨架 |
 | ESP-NOW 初始化骨架 | ✅ 骨架 |
 

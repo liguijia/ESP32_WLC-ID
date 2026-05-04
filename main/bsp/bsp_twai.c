@@ -13,7 +13,21 @@ static const char *TAG = "bsp_twai";
 static bool              s_initialized;
 static bool              s_started;
 static uint32_t          s_baud;
+static twai_mode_t       s_mode;
 static SemaphoreHandle_t s_tx_mutex;
+
+static const twai_timing_config_t *get_timing(uint32_t baud)
+{
+    switch (baud) {
+    case 1000000: { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_1MBITS();    return &t; }
+    case 800000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_800KBITS();  return &t; }
+    case 500000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();  return &t; }
+    case 250000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_250KBITS();  return &t; }
+    case 125000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_125KBITS();  return &t; }
+    case 100000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_100KBITS();  return &t; }
+    default:      { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();  return &t; }
+    }
+}
 
 static void msg_from_twai(bsp_twai_msg_t *dst, const twai_message_t *src)
 {
@@ -34,20 +48,7 @@ static void msg_to_twai(twai_message_t *dst, const bsp_twai_msg_t *src)
     memcpy(dst->data, src->data, dst->data_length_code);
 }
 
-static const twai_timing_config_t *get_timing(uint32_t baud)
-{
-    switch (baud) {
-    case 1000000: { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_1MBITS();    return &t; }
-    case 800000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_800KBITS();  return &t; }
-    case 500000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();  return &t; }
-    case 250000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_250KBITS();  return &t; }
-    case 125000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_125KBITS();  return &t; }
-    case 100000:  { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_100KBITS();  return &t; }
-    default:      { static const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();  return &t; }
-    }
-}
-
-static esp_err_t do_init(uint32_t baud_rate, twai_mode_t mode)
+static esp_err_t do_init_internal(uint32_t baud_rate, twai_mode_t mode)
 {
     const pinmux_twai_config_t *cfg = pinmux_twai_get_config();
 
@@ -72,9 +73,9 @@ static esp_err_t do_init(uint32_t baud_rate, twai_mode_t mode)
     if (s_initialized)  { twai_driver_uninstall(); s_initialized = false; }
 
     twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(cfg->tx_gpio, cfg->rx_gpio, mode);
-    g.rx_queue_len  = 32;
-    g.tx_queue_len  = 16;
-    g.alerts_enabled = TWAI_ALERT_ALL;
+    g.rx_queue_len  = 64;
+    g.tx_queue_len  = 32;
+    g.alerts_enabled = TWAI_ALERT_NONE;
 
     const twai_timing_config_t *t = get_timing(baud_rate);
     twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
@@ -89,13 +90,14 @@ static esp_err_t do_init(uint32_t baud_rate, twai_mode_t mode)
     s_initialized = true;
     s_started = true;
     s_baud = baud_rate;
+    s_mode = mode;
 
     ESP_LOGI(TAG, "init baud=%" PRIu32 " mode=%d", baud_rate, mode);
     return ESP_OK;
 }
 
-esp_err_t bsp_twai_init(uint32_t baud_rate)         { return do_init(baud_rate, TWAI_MODE_NORMAL); }
-esp_err_t bsp_twai_init_no_ack(uint32_t baud_rate)  { return do_init(baud_rate, TWAI_MODE_NO_ACK); }
+esp_err_t bsp_twai_init(uint32_t baud_rate)         { return do_init_internal(baud_rate, TWAI_MODE_NORMAL); }
+esp_err_t bsp_twai_init_no_ack(uint32_t baud_rate)  { return do_init_internal(baud_rate, TWAI_MODE_NO_ACK); }
 
 esp_err_t bsp_twai_config_filter(const bsp_twai_filter_t *filters, size_t count)
 {
@@ -143,7 +145,20 @@ esp_err_t bsp_twai_stop(void)
 
 esp_err_t bsp_twai_transmit(const bsp_twai_msg_t *msg, TickType_t timeout)
 {
-    if (!s_started || !msg) return ESP_ERR_INVALID_STATE;
+    if (!msg) return ESP_ERR_INVALID_ARG;
+
+    if (!s_started) {
+        esp_err_t ret = do_init_internal(s_baud, s_mode);
+        if (ret != ESP_OK) return ret;
+    }
+
+    twai_status_info_t st;
+    if (twai_get_status_info(&st) == ESP_OK) {
+        if (st.state == TWAI_STATE_BUS_OFF || st.state == TWAI_STATE_STOPPED) {
+            do_init_internal(s_baud, s_mode);
+        }
+    }
+
     twai_message_t tx;
     msg_to_twai(&tx, msg);
     xSemaphoreTake(s_tx_mutex, portMAX_DELAY);
