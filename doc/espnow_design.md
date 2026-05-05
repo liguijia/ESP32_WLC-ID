@@ -430,9 +430,9 @@ esp_now_add_peer(&peer);
 
 1. [x] 编写设计文档（本文档）
 2. [x] 实现 `app_espnow.c/h`（基站端：广播、单播、peer 管理）
-3. [x] 实现 `app_espnow_device.c/h`（设备端：接收、应答、announce）
+3. [x] 实现 `app_espnow_device.c/h`（设备端：接收、应答、announce、心跳）
 4. [x] 基础广播通信测试（基站 10Hz 广播，设备接收几乎无丢包）
-5. [ ] 设备发现与心跳
+5. [x] 设备发现与心跳（DISCOVER/ANNOUNCE/HEARTBEAT，OLED 显示在线设备）
 6. [ ] 单播 CMD_REQ/RSP 测试
 7. [ ] 实现桥接模块（IR/CAN ↔ ESP-NOW）
 8. [ ] 多设备组网测试

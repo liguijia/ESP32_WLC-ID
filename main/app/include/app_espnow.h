@@ -5,7 +5,7 @@
 #include "freertos/semphr.h"
 
 #define ESPNOW_MAX_PEERS      10
-#define ESPNOW_PEER_TIMEOUT_MS 90000
+#define ESPNOW_PEER_TIMEOUT_MS 6000
 #define ESPNOW_NAME_MAX_LEN   16
 
 typedef struct espnow_base espnow_base_t;
@@ -72,6 +72,8 @@ esp_err_t espnow_base_send_cmd_req_default(espnow_base_t *self, uint8_t device_i
 esp_err_t espnow_base_broadcast(espnow_base_t *self, const void *data, size_t len);
 
 void espnow_base_get_stats(espnow_base_t *self, espnow_base_stats_t *stats);
+void espnow_base_check_peers(espnow_base_t *self, uint32_t timeout_ms);
+size_t espnow_base_online_count(espnow_base_t *self);
 
 void espnow_base_process_rx(espnow_base_t *self, const uint8_t *mac,
                              const uint8_t *frame, size_t len);

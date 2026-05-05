@@ -5,6 +5,9 @@
 #include "bsp_espnow.h"
 #include "esp_crc.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "espnow_dev";
 
@@ -41,7 +44,7 @@ static esp_err_t send_rsp(espnow_device_t *self, uint8_t base_id,
 }
 
 esp_err_t espnow_device_init(espnow_device_t *self, uint8_t id, const char *name) {
-    if (!self || id == 0 || id == IR_PROTO_BROADCAST) {
+    if (!self || id == IR_PROTO_BROADCAST) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -70,22 +73,22 @@ void espnow_device_set_data_cb(espnow_device_t *self, espnow_device_data_cb_t cb
 esp_err_t espnow_device_announce(espnow_device_t *self) {
     if (!self) return ESP_ERR_INVALID_STATE;
 
-    uint8_t data[1 + 16];
+    uint8_t data[1 + ESPNOW_NAME_MAX_LEN];
     data[0] = self->id;
-    memcpy(&data[1], self->name, 16);
+    memcpy(&data[1], self->name, ESPNOW_NAME_MAX_LEN);
 
     uint8_t frame[ESPNOW_FRAME_OVERHEAD + IR_PROTO_MAX_PAYLOAD];
     ir_proto_hdr_t *hdr = (ir_proto_hdr_t *)frame;
 
     hdr->header = IR_PROTO_HEADER;
-    hdr->ctrl = 0x60;
+    hdr->ctrl = IR_CTRL_ANNOUNCE;
     hdr->master_id = self->id;
     hdr->slave_id = IR_PROTO_BROADCAST;
     hdr->seq = self->seq++;
 
-    memcpy(hdr->data, data, 17);
+    memcpy(hdr->data, data, 1 + ESPNOW_NAME_MAX_LEN);
 
-    size_t payload_len = offsetof(ir_proto_hdr_t, data) + 17;
+    size_t payload_len = offsetof(ir_proto_hdr_t, data) + 1 + ESPNOW_NAME_MAX_LEN;
     uint16_t crc = crc16_calc(&frame[2], payload_len - 2);
     frame[payload_len] = (uint8_t)(crc & 0xFF);
     frame[payload_len + 1] = (uint8_t)((crc >> 8) & 0xFF);
@@ -96,6 +99,33 @@ esp_err_t espnow_device_announce(espnow_device_t *self) {
         self->registered = true;
     }
     return ret;
+}
+
+esp_err_t espnow_device_send_heartbeat(espnow_device_t *self) {
+    if (!self) return ESP_ERR_INVALID_STATE;
+
+    uint8_t data[1 + ESPNOW_NAME_MAX_LEN];
+    data[0] = self->id;
+    memcpy(&data[1], self->name, ESPNOW_NAME_MAX_LEN);
+
+    uint8_t frame[ESPNOW_FRAME_OVERHEAD + IR_PROTO_MAX_PAYLOAD];
+    ir_proto_hdr_t *hdr = (ir_proto_hdr_t *)frame;
+
+    hdr->header = IR_PROTO_HEADER;
+    hdr->ctrl = IR_CTRL_HEARTBEAT;
+    hdr->master_id = self->id;
+    hdr->slave_id = IR_PROTO_BROADCAST;
+    hdr->seq = self->seq++;
+
+    memcpy(hdr->data, data, 1 + ESPNOW_NAME_MAX_LEN);
+
+    size_t payload_len = offsetof(ir_proto_hdr_t, data) + 1 + ESPNOW_NAME_MAX_LEN;
+    uint16_t crc = crc16_calc(&frame[2], payload_len - 2);
+    frame[payload_len] = (uint8_t)(crc & 0xFF);
+    frame[payload_len + 1] = (uint8_t)((crc >> 8) & 0xFF);
+
+    uint8_t broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    return bsp_espnow_send(broadcast_mac, frame, payload_len + 2);
 }
 
 void espnow_device_process_rx(espnow_device_t *self, const uint8_t *mac,
@@ -118,7 +148,7 @@ void espnow_device_process_rx(espnow_device_t *self, const uint8_t *mac,
     uint8_t type = ir_ctrl_type(hdr->ctrl);
     bool req = ir_ctrl_is_req(hdr->ctrl);
 
-    if (type == 0x50) {
+    if (type == IR_CTRL_DISCOVER) {
         espnow_device_announce(self);
         return;
     }

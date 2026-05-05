@@ -2,6 +2,8 @@
 
 #include "ir_proto_common.h"
 
+#define ESPNOW_NAME_MAX_LEN 16
+
 typedef struct espnow_device espnow_device_t;
 
 typedef void (*espnow_device_cmd_cb_t)(espnow_device_t *self, uint8_t base_id,
@@ -13,7 +15,7 @@ typedef void (*espnow_device_data_cb_t)(espnow_device_t *self, uint8_t src_id,
 
 struct espnow_device {
     uint8_t id;
-    char name[16];
+    char name[ESPNOW_NAME_MAX_LEN];
     uint8_t seq;
     bool registered;
     espnow_device_cmd_cb_t on_cmd;
@@ -27,6 +29,7 @@ void espnow_device_set_cmd_cb(espnow_device_t *self, espnow_device_cmd_cb_t cb);
 void espnow_device_set_data_cb(espnow_device_t *self, espnow_device_data_cb_t cb);
 
 esp_err_t espnow_device_announce(espnow_device_t *self);
+esp_err_t espnow_device_send_heartbeat(espnow_device_t *self);
 
 void espnow_device_process_rx(espnow_device_t *self, const uint8_t *mac,
                                const uint8_t *frame, size_t len);

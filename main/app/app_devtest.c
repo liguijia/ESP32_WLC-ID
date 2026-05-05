@@ -15,7 +15,8 @@
 
 static const char *TAG = "devtest";
 
-#define ESPNOW_BROADCAST_INTERVAL_MS 10
+#define ESPNOW_BROADCAST_INTERVAL_MS 100
+#define ESPNOW_HEARTBEAT_INTERVAL_MS 2000
 #define ESPNOW_RX_BUF_SIZE 256
 
 static volatile uint32_t s_heartbeat;
@@ -23,8 +24,6 @@ static volatile uint32_t s_heartbeat;
 #if WIRELESSID_ESPNOW_BASE_ENABLE
 static espnow_base_t s_base;
 static volatile uint32_t s_bcast_sent;
-static volatile uint32_t s_rsp_ok;
-static volatile uint32_t s_rsp_fail;
 #endif
 
 #if WIRELESSID_ESPNOW_DEVICE_ENABLE
@@ -60,9 +59,6 @@ static void base_bcast_task(void *arg) {
     esp_err_t ret = espnow_base_broadcast(&s_base, payload, 3);
     if (ret == ESP_OK) {
       s_bcast_sent++;
-      ESP_LOGI(TAG, "BCAST sent #%" PRIu32, s_bcast_sent);
-    } else {
-      ESP_LOGW(TAG, "BCAST fail: %d", ret);
     }
 
     vTaskDelay(pdMS_TO_TICKS(ESPNOW_BROADCAST_INTERVAL_MS));
@@ -90,9 +86,17 @@ static void device_data_handler(espnow_device_t *self, uint8_t src_id,
                                 const uint8_t *data, size_t len) {
   (void)self;
   s_data_received++;
-  ESP_LOGI(TAG, "DATA #%d from 0x%02x [%d]: %02x %02x %02x",
-           (int)s_data_received, src_id, (int)len, len > 0 ? data[0] : 0,
-           len > 1 ? data[1] : 0, len > 2 ? data[2] : 0);
+  ESP_LOGI(TAG, "DATA #%d from 0x%02x [%d]", (int)s_data_received, src_id,
+           (int)len);
+}
+
+static void device_heartbeat_task(void *arg) {
+  (void)arg;
+
+  while (1) {
+    espnow_device_send_heartbeat(&s_device);
+    vTaskDelay(pdMS_TO_TICKS(ESPNOW_HEARTBEAT_INTERVAL_MS));
+  }
 }
 #endif
 
@@ -104,16 +108,28 @@ static void heartbeat_task(void *arg) {
     ESP_LOGI(TAG, "hb=%" PRIu32, s_heartbeat);
 
 #if WIRELESSID_ESPNOW_BASE_ENABLE
+    espnow_base_check_peers(&s_base, ESPNOW_PEER_TIMEOUT_MS);
+
     espnow_base_stats_t st;
     espnow_base_get_stats(&s_base, &st);
+
+    size_t online = espnow_base_online_count(&s_base);
+    bsp_display_printf(1, 0, "BASE online:%d", (int)online);
 
     size_t peer_count = 0;
     espnow_peer_t peers[ESPNOW_MAX_PEERS];
     espnow_base_get_peers(&s_base, peers, ESPNOW_MAX_PEERS, &peer_count);
 
-    bsp_display_printf(1, 0, "BASE peers:%d", (int)peer_count);
-    bsp_display_printf(2, 0, "BC:%" PRIu32 " OK:%" PRIu32, s_bcast_sent,
-                       st.rx_frames);
+    if (peer_count > 0) {
+      bsp_display_printf(2, 0, "ID:%02x %02x %02x %02x",
+                         peers[0].device_id,
+                         peer_count > 1 ? peers[1].device_id : 0,
+                         peer_count > 2 ? peers[2].device_id : 0,
+                         peer_count > 3 ? peers[3].device_id : 0);
+    } else {
+      bsp_display_printf(2, 0, "ID:--");
+    }
+
     bsp_display_printf(3, 0, "TX:%" PRIu32 " RX:%" PRIu32, st.tx_frames,
                        st.rx_frames);
 #endif
@@ -139,6 +155,7 @@ void app_devtest_start(void) {
 
 #if WIRELESSID_ESPNOW_BASE_ENABLE
   espnow_base_init(&s_base, WIRELESSID_DEVICE_ID, "Base");
+  espnow_base_discover(&s_base);
   xTaskCreate(base_bcast_task, "en_bcast", 4096, NULL, 4, NULL);
 #endif
 
@@ -147,6 +164,7 @@ void app_devtest_start(void) {
   espnow_device_set_cmd_cb(&s_device, device_cmd_handler);
   espnow_device_set_data_cb(&s_device, device_data_handler);
   espnow_device_announce(&s_device);
+  xTaskCreate(device_heartbeat_task, "en_hb", 2048, NULL, 3, NULL);
 #endif
 
   bsp_ws2812_play(BSP_WS2812_EFFECT_RAINBOW, 0, 0, 0, 128, 4000);

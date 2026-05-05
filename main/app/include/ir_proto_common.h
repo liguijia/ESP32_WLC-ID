@@ -15,6 +15,9 @@
 #define IR_CTRL_RSP           0x20
 #define IR_CTRL_DATA          0x30
 #define IR_CTRL_BCAST         0x40
+#define IR_CTRL_DISCOVER      0x50
+#define IR_CTRL_ANNOUNCE      0x60
+#define IR_CTRL_HEARTBEAT     0x70
 
 #define IR_CTRL_TYPE_MASK     0xF0
 #define IR_CTRL_REQ_MASK      0x08

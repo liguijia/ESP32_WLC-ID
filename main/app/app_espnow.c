@@ -107,7 +107,7 @@ static void update_peer(espnow_base_t *self, uint8_t device_id,
 }
 
 esp_err_t espnow_base_init(espnow_base_t *self, uint8_t id, const char *name) {
-    if (!self || id == 0 || id == IR_PROTO_BROADCAST) {
+    if (!self || id == IR_PROTO_BROADCAST) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -245,12 +245,47 @@ void espnow_base_get_stats(espnow_base_t *self, espnow_base_stats_t *stats) {
     if (self && stats) { *stats = self->stats; }
 }
 
+void espnow_base_check_peers(espnow_base_t *self, uint32_t timeout_ms) {
+    if (!self) return;
+
+    uint32_t now = now_ms();
+    xSemaphoreTake(self->peer_mutex, portMAX_DELAY);
+
+    for (size_t i = 0; i < self->peer_count; i++) {
+        if (self->peers[i].online &&
+            (now - self->peers[i].last_seen_ms) > timeout_ms) {
+            self->peers[i].online = false;
+            ESP_LOGW(TAG, "peer 0x%02x offline (timeout %" PRIu32 "ms)",
+                     self->peers[i].device_id, timeout_ms);
+        }
+    }
+
+    xSemaphoreGive(self->peer_mutex);
+}
+
+size_t espnow_base_online_count(espnow_base_t *self) {
+    if (!self) return 0;
+
+    xSemaphoreTake(self->peer_mutex, portMAX_DELAY);
+    size_t count = 0;
+    for (size_t i = 0; i < self->peer_count; i++) {
+        if (self->peers[i].online) count++;
+    }
+    xSemaphoreGive(self->peer_mutex);
+    return count;
+}
+
 void espnow_base_process_rx(espnow_base_t *self, const uint8_t *mac,
                              const uint8_t *frame, size_t len) {
     if (!self || !frame || len < ESPNOW_FRAME_OVERHEAD) return;
 
+    ESP_LOGI(TAG, "process_rx len=%d", (int)len);
+
     const ir_proto_hdr_t *hdr = (const ir_proto_hdr_t *)frame;
-    if (hdr->header != IR_PROTO_HEADER) return;
+    if (hdr->header != IR_PROTO_HEADER) {
+        ESP_LOGW(TAG, "bad header: 0x%04x", hdr->header);
+        return;
+    }
 
     if (hdr->master_id == self->id) return;
 
@@ -260,17 +295,25 @@ void espnow_base_process_rx(espnow_base_t *self, const uint8_t *mac,
 
     if (received_crc != calc_crc) {
         self->stats.rx_crc_errors++;
+        ESP_LOGW(TAG, "CRC error: rx=0x%04x calc=0x%04x", received_crc, calc_crc);
         return;
     }
 
     self->stats.rx_frames++;
 
     uint8_t type = ir_ctrl_type(hdr->ctrl);
+    ESP_LOGD(TAG, "RX type=0x%02x from 0x%02x", type, hdr->master_id);
 
-    if (type == 0x60) {
+    if (type == IR_CTRL_ANNOUNCE) {
         update_peer(self, hdr->master_id, mac, (const char *)hdr->data, 0);
         self->stats.announce_recv++;
         ESP_LOGI(TAG, "announce from 0x%02x", hdr->master_id);
+        return;
+    }
+
+    if (type == IR_CTRL_HEARTBEAT) {
+        ESP_LOGI(TAG, "heartbeat from 0x%02x", hdr->master_id);
+        update_peer(self, hdr->master_id, mac, (const char *)hdr->data, 0);
         return;
     }
 
