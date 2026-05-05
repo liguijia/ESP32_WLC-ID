@@ -15,6 +15,8 @@ static bool              s_started;
 static uint32_t          s_baud;
 static twai_mode_t       s_mode;
 static SemaphoreHandle_t s_tx_mutex;
+static volatile uint32_t s_tx_frames;
+static volatile uint32_t s_rx_frames;
 
 static const twai_timing_config_t *get_timing(uint32_t baud)
 {
@@ -75,7 +77,7 @@ static esp_err_t do_init_internal(uint32_t baud_rate, twai_mode_t mode)
     twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(cfg->tx_gpio, cfg->rx_gpio, mode);
     g.rx_queue_len  = 64;
     g.tx_queue_len  = 32;
-    g.alerts_enabled = TWAI_ALERT_NONE;
+    g.alerts_enabled = TWAI_ALERT_RX_DATA;
 
     const twai_timing_config_t *t = get_timing(baud_rate);
     twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
@@ -164,6 +166,9 @@ esp_err_t bsp_twai_transmit(const bsp_twai_msg_t *msg, TickType_t timeout)
     xSemaphoreTake(s_tx_mutex, portMAX_DELAY);
     esp_err_t ret = twai_transmit(&tx, timeout);
     xSemaphoreGive(s_tx_mutex);
+    if (ret == ESP_OK) {
+        s_tx_frames++;
+    }
     return ret;
 }
 
@@ -172,7 +177,10 @@ esp_err_t bsp_twai_receive(bsp_twai_msg_t *msg, TickType_t timeout)
     if (!s_started || !msg) return ESP_ERR_INVALID_STATE;
     twai_message_t rx;
     esp_err_t ret = twai_receive(&rx, timeout);
-    if (ret == ESP_OK) msg_from_twai(msg, &rx);
+    if (ret == ESP_OK) {
+        msg_from_twai(msg, &rx);
+        s_rx_frames++;
+    }
     return ret;
 }
 
@@ -189,3 +197,9 @@ esp_err_t bsp_twai_get_status(twai_status_info_t *status)
 }
 
 bool bsp_twai_is_started(void) { return s_started; }
+
+void bsp_twai_get_frame_counts(uint32_t *tx_frames, uint32_t *rx_frames)
+{
+    if (tx_frames) *tx_frames = s_tx_frames;
+    if (rx_frames) *rx_frames = s_rx_frames;
+}

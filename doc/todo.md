@@ -323,52 +323,54 @@
 
 ---
 
-## 8. 建议的近期实施顺序
+## 8. 下一步实施顺序
 
-- [ ] 第一步：确认原理图与 GPIO 分配。
-- [x] 第二步：先搭建基础工程结构与配置系统。
-- [x] 第二步补充：按当前已知信息完善 pinmux 层。
-- [x] 第三步：打通 UART0 + 日志 + 屏幕调试显示。
-- [x] 第四步：实现 WS2812B 状态灯和统一系统状态机。
-- [x] 第五步：实现 TWAI 并完成基础收发测试。
-- [x] 第六步：实现红外串口驱动并验证硬件链路（BSP 层验证通过）。
-- [ ] 第七步：设计红外协议层（帧格式/CRC/重发）。
-- [ ] 第八步：实现 ESP-NOW 组网和节点状态管理。
-- [ ] 第九步：完成桥接、联调、异常恢复与长期稳定性测试。
+> 基础驱动与协议层已完成，进入实际应用开发阶段
+
+- [ ] IR ↔ ESP-NOW 桥接（基站转发 IR 数据到 ESP-NOW 网络）
+- [ ] CAN ↔ ESP-NOW 桥接（CAN 总线数据转发到 ESP-NOW）
+- [ ] 统一命令调度框架（整合 IR/ESP-NOW/CAN 链路）
+- [x] WebUI 仪表盘（Wi-Fi AP + HTTP，实时状态监控）
+- [ ] KEY 按键（软件消抖 + 短按/长按事件 + 页面切换）
+- [ ] 看门狗保护
 
 ---
 
 ## 9. 当前阶段结论
 
-- 当前工程已完成 app/bsp/pinmux 分层架构，`app_main.c` 为唯一入口。
-- 当前已确认的关键引脚包括：I2C、TWAI、红外 `UART1`、38kHz 载波 PWM、WS2812B、KEY。
-- 当前已完成以下模块的**代码落地并通过编译或硬体验证**：
-  - UART0（`app_uart0` 应用层收发 + 模式切换 + 统计；`RX` 受硬件并联冲突待复测）
-  - **TWAI（HAL 风格完整驱动，回调式接收，1Mbps NO_ACK 模式，硬体验证通过）**
-  - **OLED SSD1306（完整驱动，文字输出正常，硬体验证通过）**
-  - **WS2812B（完整驱动 + 效果引擎，已硬体验证通过）**
-  - **红外串口（BSP + 协议层 app_ir + CAN 桥接完整，TX→IR→RX→TWAI 链路验证通过）**
-  - KEY GPIO 初始化骨架
-  - ESP-NOW / Wi-Fi / NVS（基础初始化）
+> 更新于 2026-05
 
-### 已知待解决问题
+### 阶段总结：基础驱动与通信协议层已完成
 
-1. ~~**I2C 驱动报错**：启用 TWAI (CAN 1Mbps) 后，OLED 每约 1s 刷新时串口伴随新 `i2c_master` API 内部 `multi_buffer_transmit` 报错。OLED 显示内容正常，但调试日志被大量 I2C 报错污染。~~ **已修复（2026-05）**。
-   - 根因：`i2c_master_transmit/receive/transmit_receive` timeout 参数单位应为毫秒 `int`，代码误传 `pdMS_TO_TICKS(...)`，导致超时语义错误并触发大量 I2C transaction failed / software timeout。
-   - 修复：统一按毫秒传 timeout；内部上拉双保险（`enable_internal_pullup` + `gpio_set_pull_mode`）；超时时 `i2c_master_bus_reset()`；OLED init 命令全链路错误检查。
-   - 结果：OLED 显示恢复正常，串口 I2C 报错消失，TWAI 收发与 OLED 并行稳定。
+当前工程已完成 app/bsp/pinmux 分层架构，所有核心通信协议均已验证通过：
 
-2. **OLED 热插拔**：经评估放弃，投入产出比不高。
+**硬件驱动层（BSP）**
+- [x] I2C 总线 + OLED SSD1306（128×64，DMA，旋转支持）
+- [x] WS2812B（RMT 驱动 + 效果引擎）
+- [x] TWAI/CAN（1Mbps NO_ACK，bus-off 自动恢复）
+- [x] UART0（应用层封装，事件驱动接收）
+- [x] 红外硬件（UART1 + 38kHz PWM + 外部门电路）
 
-3. **OLED 旋转方向**：当前 `bsp_display_init()` 中硬件 seg/com 映射为硬编码（0xc8/0xa1），`bsp_display_set_rotation()` 仅控制 `draw_point` 软件坐标变换。如需更改硬件方向需直接修改 init 序列。
+**通信协议层（APP）**
+- [x] 红外主从协议（CMD_REQ/RSP，~65% 成功率）
+- [x] ESP-NOW 组网（设备发现/心跳/CMD_REQ-RSP，1Hz 稳定）
+- [x] CAN-IR 桥接（TX→IR→RX→TWAI 链路验证通过）
+- [x] 统一帧格式（`ir_proto_common.h`：0xAA55 + ctrl + src + dst + data + seq + crc）
 
-4. ~~**TWAI bus-off 恢复**~~ **已解决（2026-05）**：发送前检测 bus-off 状态，自动重新初始化驱动。25Hz 稳定性测试通过（2k+ 帧无卡死）。
+**待完善**
+- [ ] KEY 按键：软件消抖、短按/长按事件模型
+- [ ] UART0 RX：需重映射到 IO18/IO19 解决硬件冲突
 
-- 当前**仍未确认**的关键点：
-  - UART0 实际连线和用途
-  - CAN 收发器附加控制脚
-  - I2C 外部上拉电阻情况（当前可用内部上拉稳定运行，但长期建议评估外部上拉）
-- 下一阶段可推进方向：红外协议优化（重发/超时）、ESP-NOW 节点通信、双向桥接联调。
+### 下一步：实际应用开发
+
+基础协议层已就绪，可开始编写实际应用：
+
+1. **IR ↔ ESP-NOW 桥接**：基站通过 ESP-NOW 收到数据后，转发到红外链路
+2. **CAN ↔ ESP-NOW 桥接**：CAN 总线数据转发到 ESP-NOW 网络
+3. **统一命令调度**：整合 IR/ESP-NOW/CAN 三条链路的命令收发
+4. **OLED 状态面板**：显示各链路状态、在线设备、错误计数
+5. **KEY 按键交互**：短按切换页面，长按进入配置模式
+6. **看门狗保护**：系统稳定性保障
 
 ### 本轮进度更新（UART0 专项）
 
@@ -441,3 +443,21 @@
   - 心跳间隔需小于超时时间的 1/3，避免误判离线。
 - 下一步：
   - IR ↔ ESP-NOW 桥接。
+
+### 本轮进度更新（TWAI 调试 + WebUI，2026-05）
+
+- TWAI 问题修复：
+  - **Bus-off 根因**：`bsp_twai_transmit` 中 bus-off 检测导致死循环（每次 reinit 后又 bus-off）。
+  - **修复方案**：恢复到工作版本逻辑（`do_init_internal` 完全重初始化），`alerts_enabled = TWAI_ALERT_RX_DATA`。
+  - **关键发现**：`TWAI_ALERT_BUS_OFF` 会导致 TWAI 驱动进入内部错误状态，即使重新初始化也无法恢复。
+  - Normal 模式需要 ACK 应答，NO_ACK 模式不需要。当前使用 NO_ACK 模式。
+- WebUI 仪表盘：
+  - Wi-Fi AP 模式（SSID: `WirelessID-XX`，密码: `12345678`）。
+  - HTTP Server 端口 80，Pico.css 风格 UI。
+  - 设备信息、TWAI/IR/ESP-NOW 统计、终端风格日志显示。
+  - AJAX 2 秒轮询，数据平滑更新。
+  - TWAI RX 回调接入 WebUI，显示完整 D0-D7 数据。
+- 关键发现：
+  - `TWAI_ALERT_NONE` 会禁用 RX 告警，导致接收回调不触发。
+  - `TWAI_ALERT_BUS_OFF` 会导致 bus-off 死循环。
+  - 最佳配置：只启用 `TWAI_ALERT_RX_DATA`。

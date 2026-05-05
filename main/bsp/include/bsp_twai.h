@@ -31,3 +31,4 @@ esp_err_t bsp_twai_read_alerts(uint32_t *alerts, TickType_t timeout);
 
 esp_err_t bsp_twai_get_status(twai_status_info_t *status);
 bool bsp_twai_is_started(void);
+void bsp_twai_get_frame_counts(uint32_t *tx_frames, uint32_t *rx_frames);

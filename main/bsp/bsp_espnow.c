@@ -50,7 +50,7 @@ esp_err_t bsp_espnow_init(void)
     wifi_init_config_t wifi_config = WIFI_INIT_CONFIG_DEFAULT();
     ESP_RETURN_ON_ERROR(esp_wifi_init(&wifi_config), TAG, "wifi init failed");
     ESP_RETURN_ON_ERROR(esp_wifi_set_storage(WIFI_STORAGE_RAM), TAG, "wifi set storage failed");
-    ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "wifi set mode failed");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_APSTA), TAG, "wifi set mode failed");
     ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "wifi start failed");
 
     ESP_RETURN_ON_ERROR(esp_now_init(), TAG, "esp-now init failed");

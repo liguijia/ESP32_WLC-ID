@@ -30,6 +30,7 @@ idf_component_register(
         "app/app_espnow.c"
         "app/app_espnow_device.c"
         "app/app_devtest.c"
+        "app/app_webui.c"
     INCLUDE_DIRS
         "."
         "include"
@@ -40,6 +41,7 @@ idf_component_register(
         driver
         esp_driver_rmt
         esp_event
+        esp_http_server
         esp_netif
         esp_timer
         esp_wifi

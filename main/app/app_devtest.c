@@ -3,8 +3,12 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <stdio.h>
+
 #include "app_espnow.h"
 #include "app_espnow_device.h"
+#include "app_twai.h"
+#include "app_webui.h"
 #include "bsp_display.h"
 #include "bsp_espnow.h"
 #include "bsp_ws2812.h"
@@ -21,7 +25,10 @@ static const char *TAG = "devtest";
 #define ESPNOW_CMD_TIMEOUT_MS 500
 #define ESPNOW_RX_BUF_SIZE 256
 
+#define TWAI_TEST_TX_INTERVAL_MS 1000
+
 static volatile uint32_t s_heartbeat;
+static volatile uint32_t s_twai_tx_count;
 
 #if WIRELESSID_ESPNOW_BASE_ENABLE
 static espnow_base_t s_base;
@@ -35,6 +42,17 @@ static espnow_device_t s_device;
 static volatile uint32_t s_cmd_received;
 static volatile uint32_t s_data_received;
 #endif
+
+static void twai_rx_cb(const bsp_twai_msg_t *msg) {
+  char log_buf[48];
+  snprintf(log_buf, sizeof(log_buf), "RX 0x%03X [%02X %02X %02X %02X %02X %02X %02X %02X]",
+           (unsigned)msg->id,
+           msg->dlc > 0 ? msg->data[0] : 0, msg->dlc > 1 ? msg->data[1] : 0,
+           msg->dlc > 2 ? msg->data[2] : 0, msg->dlc > 3 ? msg->data[3] : 0,
+           msg->dlc > 4 ? msg->data[4] : 0, msg->dlc > 5 ? msg->data[5] : 0,
+           msg->dlc > 6 ? msg->data[6] : 0, msg->dlc > 7 ? msg->data[7] : 0);
+  app_webui_log_twai(log_buf);
+}
 
 static void espnow_rx_cb(const uint8_t *mac, const uint8_t *data, int len) {
   if (data == NULL || len <= 0) {
@@ -63,6 +81,10 @@ static void base_bcast_task(void *arg) {
     esp_err_t ret = espnow_base_broadcast(&s_base, payload, 3);
     if (ret == ESP_OK) {
       s_bcast_sent++;
+      char log_buf[48];
+      snprintf(log_buf, sizeof(log_buf), "TX BCAST [%02X %02X %02X]",
+               payload[0], payload[1], payload[2]);
+      app_webui_log_espnow(log_buf);
     }
 
     vTaskDelay(pdMS_TO_TICKS(ESPNOW_BROADCAST_INTERVAL_MS));
@@ -102,11 +124,23 @@ static void base_cmd_task(void *arg) {
 
       if (ret == ESP_OK) {
         s_cmd_ok++;
+        char log_buf[48];
+        snprintf(log_buf, sizeof(log_buf), "TX CMD 0x%02X [%02X %02X]",
+                 peers[i].device_id, cmd[0], cmd[1]);
+        app_webui_log_espnow(log_buf);
+        snprintf(log_buf, sizeof(log_buf), "RX RSP 0x%02X [%02X %02X %02X]",
+                 peers[i].device_id, rsp_len > 0 ? rsp[0] : 0,
+                 rsp_len > 1 ? rsp[1] : 0, rsp_len > 2 ? rsp[2] : 0);
+        app_webui_log_espnow(log_buf);
         ESP_LOGI(TAG, "CMD ok, id=0x%02x rsp=[%02x %02x %02x]",
                  peers[i].device_id, rsp_len > 0 ? rsp[0] : 0,
                  rsp_len > 1 ? rsp[1] : 0, rsp_len > 2 ? rsp[2] : 0);
       } else {
         s_cmd_fail++;
+        char log_buf[48];
+        snprintf(log_buf, sizeof(log_buf), "!CMD fail 0x%02X err=%d",
+                 peers[i].device_id, ret);
+        app_webui_log_espnow(log_buf);
         ESP_LOGW(TAG, "CMD fail id=0x%02x: %d", peers[i].device_id, ret);
       }
     }
@@ -123,6 +157,11 @@ static void device_cmd_handler(espnow_device_t *self, uint8_t base_id,
   (void)self;
   s_cmd_received++;
 
+  char log_buf[48];
+  snprintf(log_buf, sizeof(log_buf), "RX CMD 0x%02X [%02X %02X]",
+           base_id, cmd_len > 0 ? cmd[0] : 0, cmd_len > 1 ? cmd[1] : 0);
+  app_webui_log_espnow(log_buf);
+
   ESP_LOGI(TAG, "CMD from 0x%02x [%d]: %02x %02x", base_id, (int)cmd_len,
            cmd_len > 0 ? cmd[0] : 0, cmd_len > 1 ? cmd[1] : 0);
 
@@ -130,12 +169,19 @@ static void device_cmd_handler(espnow_device_t *self, uint8_t base_id,
   rsp[1] = 0xDD;
   rsp[2] = (uint8_t)(s_cmd_received & 0xFF);
   *rsp_len = 3;
+
+  snprintf(log_buf, sizeof(log_buf), "TX RSP 0x%02X [%02X %02X %02X]",
+           base_id, rsp[0], rsp[1], rsp[2]);
+  app_webui_log_espnow(log_buf);
 }
 
 static void device_data_handler(espnow_device_t *self, uint8_t src_id,
                                 const uint8_t *data, size_t len) {
   (void)self;
   s_data_received++;
+  char log_buf[48];
+  snprintf(log_buf, sizeof(log_buf), "RX DATA 0x%02X [%d]", src_id, (int)len);
+  app_webui_log_espnow(log_buf);
   ESP_LOGI(TAG, "DATA #%d from 0x%02x [%d]", (int)s_data_received, src_id,
            (int)len);
 }
@@ -145,7 +191,45 @@ static void device_heartbeat_task(void *arg) {
 
   while (1) {
     espnow_device_send_heartbeat(&s_device);
+    app_webui_log_espnow("TX HB");
     vTaskDelay(pdMS_TO_TICKS(ESPNOW_HEARTBEAT_INTERVAL_MS));
+  }
+}
+#endif
+
+#if WIRELESSID_TWAI_TEST_TX_ENABLE
+static void twai_test_tx_task(void *arg) {
+  (void)arg;
+
+  ESP_LOGI(TAG, "twai_test_tx_task started, interval=%dms", TWAI_TEST_TX_INTERVAL_MS);
+
+  while (1) {
+    bsp_twai_msg_t msg = {
+        .id = 0x123,
+        .extd = false,
+        .rtr = false,
+        .dlc = 8,
+        .data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+    };
+    msg.data[0] = (uint8_t)(s_twai_tx_count & 0xFF);
+    msg.data[1] = (uint8_t)((s_twai_tx_count >> 8) & 0xFF);
+
+    esp_err_t ret = app_twai_transmit(&msg, pdMS_TO_TICKS(100));
+    if (ret == ESP_OK) {
+      s_twai_tx_count++;
+      if (s_twai_tx_count % 100 == 0) {
+        ESP_LOGI(TAG, "TWAI TX #%lu OK", (unsigned long)s_twai_tx_count);
+      }
+    } else {
+      ESP_LOGW(TAG, "TWAI TX fail: %d (0x%x)", ret, ret);
+      twai_status_info_t st;
+      if (bsp_twai_get_status(&st) == ESP_OK) {
+        ESP_LOGW(TAG, "TWAI state=%d tx_err=%lu rx_err=%lu",
+                 st.state, st.tx_error_counter, st.rx_error_counter);
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(TWAI_TEST_TX_INTERVAL_MS));
   }
 }
 #endif
@@ -190,6 +274,42 @@ static void heartbeat_task(void *arg) {
     bsp_display_printf(4, 0, "hb:%" PRIu32, s_heartbeat);
     bsp_display_refresh();
 
+#if WIRELESSID_TWAI_TEST_TX_ENABLE
+    bsp_display_printf(5, 0, "TWAI TX:%" PRIu32, s_twai_tx_count);
+#endif
+
+#if WIRELESSID_ESPNOW_BASE_ENABLE
+    {
+      char peer_ids[WEBUI_PEER_STR_MAX] = "";
+      size_t pos = 0;
+      for (size_t i = 0; i < peer_count && pos < WEBUI_PEER_STR_MAX - 4; i++) {
+        int n = snprintf(peer_ids + pos, WEBUI_PEER_STR_MAX - pos,
+                         "%s%02X", i > 0 ? " " : "", peers[i].device_id);
+        if (n > 0) pos += (size_t)n;
+      }
+
+      uint32_t twai_tx = 0, twai_rx = 0;
+      bsp_twai_get_frame_counts(&twai_tx, &twai_rx);
+
+      app_webui_status_t wst = {
+          .uptime_sec = s_heartbeat,
+          .device_id = WIRELESSID_DEVICE_ID,
+          .peer_count = online,
+          .twai_tx_frames = twai_tx,
+          .twai_rx_frames = twai_rx,
+          .twai_tx_drops = 0,
+          .ir_tx_frames = 0,
+          .ir_rx_frames = 0,
+          .ir_rx_crc_err = 0,
+          .espnow_tx_frames = st.tx_frames,
+          .espnow_rx_frames = st.rx_frames,
+          .espnow_announce_recv = st.announce_recv,
+      };
+      strncpy(wst.peer_ids, peer_ids, WEBUI_PEER_STR_MAX - 1);
+      app_webui_update_status(&wst);
+    }
+#endif
+
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
@@ -197,6 +317,14 @@ static void heartbeat_task(void *arg) {
 void app_devtest_start(void) {
   bsp_display_clear();
   bsp_display_printf(0, 0, "WirelessID");
+
+  app_webui_init(WIRELESSID_DEVICE_ID);
+
+  app_twai_set_rx_cb(twai_rx_cb);
+
+#if WIRELESSID_TWAI_TEST_TX_ENABLE
+  xTaskCreate(twai_test_tx_task, "twai_tx", 4096, NULL, 4, NULL);
+#endif
 
   bsp_espnow_register_recv_cb(espnow_rx_cb);
 
@@ -217,4 +345,6 @@ void app_devtest_start(void) {
 
   bsp_ws2812_play(BSP_WS2812_EFFECT_RAINBOW, 0, 0, 0, 128, 4000);
   xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 3, NULL);
+
+  app_webui_start();
 }
