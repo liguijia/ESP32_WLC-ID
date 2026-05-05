@@ -27,6 +27,8 @@
 #define WIRELESSID_ESPNOW_BASE_ENABLE 1
 // ESP-NOW device test: receive broadcast and echo back
 #define WIRELESSID_ESPNOW_DEVICE_ENABLE 0
+// CMD framework test: test command dispatch and handlers
+#define WIRELESSID_CMD_TEST_ENABLE 1
 
 // Device ID allocation:
 //   0x00      : reserved

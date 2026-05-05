@@ -218,13 +218,13 @@ static void twai_test_tx_task(void *arg) {
     if (ret == ESP_OK) {
       s_twai_tx_count++;
       if (s_twai_tx_count % 100 == 0) {
-        ESP_LOGI(TAG, "TWAI TX #%lu OK", (unsigned long)s_twai_tx_count);
+        ESP_LOGI(TAG, "TWAI TX #%" PRIu32 " OK", s_twai_tx_count);
       }
     } else {
       ESP_LOGW(TAG, "TWAI TX fail: %d (0x%x)", ret, ret);
       twai_status_info_t st;
       if (bsp_twai_get_status(&st) == ESP_OK) {
-        ESP_LOGW(TAG, "TWAI state=%d tx_err=%lu rx_err=%lu",
+        ESP_LOGW(TAG, "TWAI state=%d tx_err=%" PRIu32 " rx_err=%" PRIu32,
                  st.state, st.tx_error_counter, st.rx_error_counter);
       }
     }

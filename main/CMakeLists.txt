@@ -31,6 +31,9 @@ idf_component_register(
         "app/app_espnow_device.c"
         "app/app_devtest.c"
         "app/app_webui.c"
+        "app/app_cmd.c"
+        "app/app_cmd_handlers.c"
+        "app/app_cmd_test.c"
     INCLUDE_DIRS
         "."
         "include"

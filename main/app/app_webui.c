@@ -1,5 +1,6 @@
 #include "app_webui.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -176,19 +177,19 @@ static esp_err_t handle_api_status(httpd_req_t *req) {
     log_to_json(&log_e, espnow_log, sizeof(espnow_log));
 
     int len = snprintf(json, sizeof(json),
-        "{\"id\":%d,\"uptime\":%lu,\"peers\":%d,\"peer_ids\":\"%s\","
-        "\"twai\":{\"tx\":%lu,\"rx\":%lu,\"drop\":%lu},"
-        "\"ir\":{\"tx\":%lu,\"rx\":%lu,\"crc_err\":%lu},"
-        "\"espnow\":{\"tx\":%lu,\"rx\":%lu,\"announce\":%lu},"
+        "{\"id\":%d,\"uptime\":%" PRIu32 ",\"peers\":%d,\"peer_ids\":\"%s\","
+        "\"twai\":{\"tx\":%" PRIu32 ",\"rx\":%" PRIu32 ",\"drop\":%" PRIu32 "},"
+        "\"ir\":{\"tx\":%" PRIu32 ",\"rx\":%" PRIu32 ",\"crc_err\":%" PRIu32 "},"
+        "\"espnow\":{\"tx\":%" PRIu32 ",\"rx\":%" PRIu32 ",\"announce\":%" PRIu32 "},"
         "\"log_twai\":%s,\"log_ir\":%s,\"log_espnow\":%s}",
-        st.device_id, (unsigned long)st.uptime_sec, (int)st.peer_count,
+        st.device_id, st.uptime_sec, (int)st.peer_count,
         st.peer_ids,
-        (unsigned long)st.twai_tx_frames, (unsigned long)st.twai_rx_frames,
-        (unsigned long)st.twai_tx_drops,
-        (unsigned long)st.ir_tx_frames, (unsigned long)st.ir_rx_frames,
-        (unsigned long)st.ir_rx_crc_err,
-        (unsigned long)st.espnow_tx_frames, (unsigned long)st.espnow_rx_frames,
-        (unsigned long)st.espnow_announce_recv,
+        st.twai_tx_frames, st.twai_rx_frames,
+        st.twai_tx_drops,
+        st.ir_tx_frames, st.ir_rx_frames,
+        st.ir_rx_crc_err,
+        st.espnow_tx_frames, st.espnow_rx_frames,
+        st.espnow_announce_recv,
         twai_log, ir_log, espnow_log);
 
     httpd_resp_set_type(req, "application/json");

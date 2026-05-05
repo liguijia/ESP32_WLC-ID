@@ -329,7 +329,7 @@
 
 - [ ] IR ↔ ESP-NOW 桥接（基站转发 IR 数据到 ESP-NOW 网络）
 - [ ] CAN ↔ ESP-NOW 桥接（CAN 总线数据转发到 ESP-NOW）
-- [ ] 统一命令调度框架（整合 IR/ESP-NOW/CAN 链路）
+- [x] 统一命令调度框架（整合 IR/ESP-NOW/CAN 链路）
 - [x] WebUI 仪表盘（Wi-Fi AP + HTTP，实时状态监控）
 - [ ] KEY 按键（软件消抖 + 短按/长按事件 + 页面切换）
 - [ ] 看门狗保护
@@ -461,3 +461,40 @@
   - `TWAI_ALERT_NONE` 会禁用 RX 告警，导致接收回调不触发。
   - `TWAI_ALERT_BUS_OFF` 会导致 bus-off 死循环。
   - 最佳配置：只启用 `TWAI_ALERT_RX_DATA`。
+
+### 本轮进度更新（统一命令调度框架，2026-05）
+
+- 已完成：
+  - 命令调度框架 `app_cmd`：统一命令注册、路由和响应机制。
+  - 多链路支持：IR、ESP-NOW、CAN、UART、WebUI、本地触发。
+  - 命令类型定义：
+    - 系统命令 (0x01-0x0F)：QUERY_STATUS、REBOOT、QUERY_VERSION、QUERY_STATS、SET_CONFIG、GET_CONFIG
+    - 设备控制 (0x10-0x1F)：LED_CTRL、LED_EFFECT、LED_BRIGHTNESS
+    - 显示控制 (0x20-0x2F)：OLED_CLEAR、OLED_TEXT、OLED_REFRESH
+    - 输入设备 (0x30-0x3F)：KEY_QUERY、KEY_EVENT
+    - 桥接命令 (0x40-0x4F)：BRIDGE_IR_ESP、BRIDGE_CAN_ESP、BRIDGE_IR_CAN
+    - 用户自定义 (0xF0-0xFF)
+  - 内置命令处理器：已实现 12 个命令处理器。
+  - 统计功能：记录各链路接收次数、成功/失败次数、无处理器次数。
+  - 线程安全：使用 FreeRTOS 互斥锁保护共享数据。
+  - 测试框架：自动测试任务，验证所有命令处理器。
+  - 设计文档：`doc/cmd_design.md`。
+- 测试结果：
+  - 所有内置命令处理器测试通过。
+  - 自定义命令注册和调用测试通过。
+  - 统计功能正常工作。
+- 关键 API：
+  - `app_cmd_init()`：初始化命令框架
+  - `app_cmd_register()`：注册命令处理器
+  - `app_cmd_dispatch()`：分发命令到处理器
+  - `app_cmd_from_ir()`：从 IR 链路接收命令
+  - `app_cmd_from_espnow()`：从 ESP-NOW 链路接收命令
+  - `app_cmd_from_can()`：从 CAN 总线接收命令
+  - `app_cmd_from_uart()`：从 UART 接收命令
+  - `app_cmd_send_local()`：本地发送命令
+  - `app_cmd_get_stats()`：获取统计信息
+  - `app_cmd_print_handlers()`：打印已注册处理器
+- 下一步：
+  - 在 IR/ESP-NOW/CAN 协议层中集成命令调度。
+  - 实现 IR ↔ ESP-NOW 桥接和 CAN ↔ ESP-NOW 桥接。
+  - 完善 KEY 按键软件消抖和事件模型。
