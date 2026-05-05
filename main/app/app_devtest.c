@@ -17,6 +17,8 @@ static const char *TAG = "devtest";
 
 #define ESPNOW_BROADCAST_INTERVAL_MS 100
 #define ESPNOW_HEARTBEAT_INTERVAL_MS 2000
+#define ESPNOW_CMD_INTERVAL_MS 1000
+#define ESPNOW_CMD_TIMEOUT_MS 500
 #define ESPNOW_RX_BUF_SIZE 256
 
 static volatile uint32_t s_heartbeat;
@@ -24,6 +26,8 @@ static volatile uint32_t s_heartbeat;
 #if WIRELESSID_ESPNOW_BASE_ENABLE
 static espnow_base_t s_base;
 static volatile uint32_t s_bcast_sent;
+static volatile uint32_t s_cmd_ok;
+static volatile uint32_t s_cmd_fail;
 #endif
 
 #if WIRELESSID_ESPNOW_DEVICE_ENABLE
@@ -62,6 +66,52 @@ static void base_bcast_task(void *arg) {
     }
 
     vTaskDelay(pdMS_TO_TICKS(ESPNOW_BROADCAST_INTERVAL_MS));
+  }
+}
+
+static void base_cmd_task(void *arg) {
+  (void)arg;
+  uint8_t cmd[8];
+  uint8_t rsp[32];
+  size_t rsp_len;
+
+  ESP_LOGI(TAG, "cmd_task started");
+
+  while (1) {
+    espnow_peer_t peers[ESPNOW_MAX_PEERS];
+    size_t peer_count = 0;
+    espnow_base_get_peers(&s_base, peers, ESPNOW_MAX_PEERS, &peer_count);
+
+    if (peer_count == 0) {
+      ESP_LOGD(TAG, "no peers, skip cmd");
+      vTaskDelay(pdMS_TO_TICKS(ESPNOW_CMD_INTERVAL_MS));
+      continue;
+    }
+
+    ESP_LOGI(TAG, "cmd_task: %d peers online", (int)peer_count);
+
+    for (size_t i = 0; i < peer_count; i++) {
+      cmd[0] = 0x01;
+      cmd[1] = (uint8_t)(s_cmd_ok & 0xFF);
+
+      ESP_LOGI(TAG, "CMD_REQ to 0x%02x...", peers[i].device_id);
+
+      esp_err_t ret = espnow_base_send_cmd_req(
+          &s_base, peers[i].device_id, cmd, 2, rsp, sizeof(rsp), &rsp_len,
+          ESPNOW_CMD_TIMEOUT_MS);
+
+      if (ret == ESP_OK) {
+        s_cmd_ok++;
+        ESP_LOGI(TAG, "CMD ok, id=0x%02x rsp=[%02x %02x %02x]",
+                 peers[i].device_id, rsp_len > 0 ? rsp[0] : 0,
+                 rsp_len > 1 ? rsp[1] : 0, rsp_len > 2 ? rsp[2] : 0);
+      } else {
+        s_cmd_fail++;
+        ESP_LOGW(TAG, "CMD fail id=0x%02x: %d", peers[i].device_id, ret);
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(ESPNOW_CMD_INTERVAL_MS));
   }
 }
 #endif
@@ -121,16 +171,13 @@ static void heartbeat_task(void *arg) {
     espnow_base_get_peers(&s_base, peers, ESPNOW_MAX_PEERS, &peer_count);
 
     if (peer_count > 0) {
-      bsp_display_printf(2, 0, "ID:%02x %02x %02x %02x",
-                         peers[0].device_id,
-                         peer_count > 1 ? peers[1].device_id : 0,
-                         peer_count > 2 ? peers[2].device_id : 0,
-                         peer_count > 3 ? peers[3].device_id : 0);
+      bsp_display_printf(2, 0, "ID:%02x", peers[0].device_id);
     } else {
       bsp_display_printf(2, 0, "ID:--");
     }
 
-    bsp_display_printf(3, 0, "TX:%" PRIu32 " RX:%" PRIu32, st.tx_frames,
+    bsp_display_printf(3, 0, "CMD:%" PRIu32 "/%" PRIu32, s_cmd_ok, s_cmd_fail);
+    bsp_display_printf(4, 0, "TX:%" PRIu32 " RX:%" PRIu32, st.tx_frames,
                        st.rx_frames);
 #endif
 
@@ -157,6 +204,7 @@ void app_devtest_start(void) {
   espnow_base_init(&s_base, WIRELESSID_DEVICE_ID, "Base");
   espnow_base_discover(&s_base);
   xTaskCreate(base_bcast_task, "en_bcast", 4096, NULL, 4, NULL);
+  xTaskCreate(base_cmd_task, "en_cmd", 4096, NULL, 4, NULL);
 #endif
 
 #if WIRELESSID_ESPNOW_DEVICE_ENABLE

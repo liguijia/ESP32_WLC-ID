@@ -166,7 +166,7 @@
 - [x] 节点心跳与在线状态：设备每 2 秒发送心跳，基站 6 秒超时标记离线。
 - [x] OLED 显示在线设备数量和设备 ID。
 - [x] ID 分配方案：基站 0xA0-0xBF，设备 0xD0-0xFE，广播 0xFF。
-- [ ] 单播 CMD_REQ/RSP 测试。
+- [x] 单播 CMD_REQ/RSP 测试（验证通过，1Hz 稳定）。
 - [ ] 设计与 CAN/红外串口的桥接转发策略。
 - [ ] Wi-Fi AP + WebUI（待评估）：
   - 基站开启热点（`WirelessID_Config`），手机/电脑直连配置。
@@ -425,17 +425,19 @@
   - 设备协议 `app_espnow_device`：面向对象设计（`espnow_device_t`），接收/应答/announce/心跳。
   - 帧格式复用 IR 协议：`0xAA55 + ctrl + src_id + dst_id + data + seq + crc`。
   - **基础广播通信验证通过**：基站 10Hz 广播，设备端接收几乎无丢包。
-  - **设备发现流程**：基站启动发送 DISCOVER，设备自动回复 ANNOUNCE。
+  - **设备发现流程**：基站启动发送 DISCOVER，设备自动回复 ANNOUNCE，自动添加 ESP-NOW peer。
   - **节点心跳与在线状态**：设备每 2 秒心跳，基站 6 秒超时标记离线。
   - **OLED 显示**：基站显示在线设备数量和设备 ID。
   - **ID 分配方案**：基站 0xA0-0xBF，设备 0xD0-0xFE，广播 0xFF。
+  - **单播 CMD_REQ/RSP 验证通过**：1Hz 稳定通信，设备下线后自动恢复。
   - 配置开关：`ESPNOW_BASE_ENABLE` / `ESPNOW_DEVICE_ENABLE` / `DEVICE_ID`。
   - ESP-NOW 设计文档：`doc/espnow_design.md`。
 - 关键发现：
   - ESP-NOW 即使广播也需要先添加广播 peer（`FF:FF:FF:FF:FF:FF`）。
+  - 单播发送前必须调用 `esp_now_add_peer()` 注册目标 MAC。
+  - RSP 帧的 `master_id` 是目标（基站），自过滤需排除 RSP 类型。
   - ESP32-C3-WROOM-02U 必须接外置天线，否则信号极弱。
   - ESP-NOW 延迟 <5ms，可靠性 >99%，远优于红外。
   - 心跳间隔需小于超时时间的 1/3，避免误判离线。
 - 下一步：
-  - 单播 CMD_REQ/RSP 测试。
   - IR ↔ ESP-NOW 桥接。

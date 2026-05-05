@@ -5,7 +5,9 @@
 #include "bsp_espnow.h"
 #include "esp_crc.h"
 #include "esp_log.h"
+#include "esp_now.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -89,6 +91,16 @@ static void update_peer(espnow_base_t *self, uint8_t device_id,
 
     if (existing == NULL && self->peer_count < ESPNOW_MAX_PEERS) {
         existing = &self->peers[self->peer_count++];
+        esp_now_peer_info_t peer_info = {
+            .channel = 0,
+            .ifidx = WIFI_IF_STA,
+            .encrypt = false,
+        };
+        memcpy(peer_info.peer_addr, mac, 6);
+        esp_err_t ret = esp_now_add_peer(&peer_info);
+        if (ret != ESP_OK && ret != ESP_ERR_ESPNOW_EXIST) {
+            ESP_LOGW(TAG, "add peer 0x%02x failed: %d", device_id, ret);
+        }
     }
 
     if (existing != NULL) {
@@ -287,7 +299,9 @@ void espnow_base_process_rx(espnow_base_t *self, const uint8_t *mac,
         return;
     }
 
-    if (hdr->master_id == self->id) return;
+    uint8_t type = ir_ctrl_type(hdr->ctrl);
+
+    if (hdr->master_id == self->id && type != IR_CTRL_RSP) return;
 
     size_t payload_len = len - ESPNOW_FRAME_OVERHEAD;
     uint16_t received_crc = (uint16_t)frame[len - 2] | ((uint16_t)frame[len - 1] << 8);
@@ -301,7 +315,6 @@ void espnow_base_process_rx(espnow_base_t *self, const uint8_t *mac,
 
     self->stats.rx_frames++;
 
-    uint8_t type = ir_ctrl_type(hdr->ctrl);
     ESP_LOGD(TAG, "RX type=0x%02x from 0x%02x", type, hdr->master_id);
 
     if (type == IR_CTRL_ANNOUNCE) {
@@ -317,7 +330,7 @@ void espnow_base_process_rx(espnow_base_t *self, const uint8_t *mac,
         return;
     }
 
-    if (type == IR_CTRL_RSP && hdr->slave_id == self->id) {
+    if (type == IR_CTRL_RSP && hdr->master_id == self->id) {
         xSemaphoreTake(self->tx_mutex, portMAX_DELAY);
         self->rsp_len = payload_len < IR_PROTO_MAX_PAYLOAD ? payload_len : IR_PROTO_MAX_PAYLOAD;
         memcpy(self->rsp_buf, hdr->data, self->rsp_len);

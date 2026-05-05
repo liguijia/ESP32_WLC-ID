@@ -433,6 +433,6 @@ esp_now_add_peer(&peer);
 3. [x] 实现 `app_espnow_device.c/h`（设备端：接收、应答、announce、心跳）
 4. [x] 基础广播通信测试（基站 10Hz 广播，设备接收几乎无丢包）
 5. [x] 设备发现与心跳（DISCOVER/ANNOUNCE/HEARTBEAT，OLED 显示在线设备）
-6. [ ] 单播 CMD_REQ/RSP 测试
+6. [x] 单播 CMD_REQ/RSP 测试（1Hz 稳定，设备下线后自动恢复）
 7. [ ] 实现桥接模块（IR/CAN ↔ ESP-NOW）
 8. [ ] 多设备组网测试
