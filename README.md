@@ -143,6 +143,8 @@
 | 无线功能开关 | ✅ | `WIRELESSID_WIRELESS_ENABLE` 控制 WebUI/ESP-NOW |
 | 双在线检测 | ✅ | 红外+ESP-NOW 联合判断设备在线状态 |
 | 设备在线统计 | ✅ | 按设备 ID 统计在线数量，与在线方式无关 |
+| ESP-NOW 双向透传 | ✅ | 双在线设备使用 ESP-NOW 双向透传 CAN 数据 |
+| 双在线过滤 | ✅ | 基站端只转发双在线设备的 ESP-NOW 数据到 CAN |
 
 ### 待开发
 

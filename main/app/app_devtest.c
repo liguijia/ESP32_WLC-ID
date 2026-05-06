@@ -51,6 +51,7 @@ static volatile uint32_t s_data_received;
 static void twai_rx_cb(const bsp_twai_msg_t *msg) {
 #if WIRELESSID_BIZ_ENABLE
   biz_can_rx_push(&s_biz_ctx, msg);
+  biz_forward_can_to_devices(&s_biz_ctx, msg);
 #endif
 
 #if WIRELESSID_WIRELESS_ENABLE

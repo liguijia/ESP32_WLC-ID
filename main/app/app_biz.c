@@ -187,6 +187,58 @@ static uint16_t crc16_calc(const uint8_t *data, size_t len) {
     return esp_crc16_le(0, data, len);
 }
 
+#if WIRELESSID_WIRELESS_ENABLE
+static bool biz_is_device_dual_online(biz_ctx_t *ctx, uint8_t device_id) {
+    if (ctx == NULL) return false;
+    for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+        if (ctx->devices[i].device_id == device_id) {
+            return ctx->devices[i].ir_online && ctx->devices[i].espnow_online;
+        }
+    }
+    return false;
+}
+#endif
+
+void biz_forward_can_to_devices(biz_ctx_t *ctx, const bsp_twai_msg_t *msg) {
+    if (ctx == NULL || msg == NULL) return;
+#if WIRELESSID_WIRELESS_ENABLE
+    uint8_t frame[32];
+    ir_proto_hdr_t *hdr = (ir_proto_hdr_t *)frame;
+    uint8_t *data = frame + sizeof(ir_proto_hdr_t);
+
+    hdr->header = IR_PROTO_HEADER;
+    hdr->ctrl = IR_CTRL_RSP;
+    hdr->master_id = ctx->self_id;
+    hdr->slave_id = 0xFF;
+    hdr->seq = 0;
+    hdr->data_len = 13;
+
+    data[0] = (uint8_t)((msg->id >> 24) & 0xFF);
+    data[1] = (uint8_t)((msg->id >> 16) & 0xFF);
+    data[2] = (uint8_t)((msg->id >> 8) & 0xFF);
+    data[3] = (uint8_t)(msg->id & 0xFF);
+    data[4] = msg->dlc;
+    memcpy(&data[5], msg->data, 8);
+
+    size_t payload_len = sizeof(ir_proto_hdr_t) + 13;
+    uint16_t crc = crc16_calc(&frame[2], payload_len - 2);
+    frame[payload_len] = (uint8_t)(crc & 0xFF);
+    frame[payload_len + 1] = (uint8_t)((crc >> 8) & 0xFF);
+
+    for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+        if (ctx->devices[i].device_id != 0 && ctx->devices[i].espnow_online) {
+            espnow_base_send_cmd(&ctx->espnow_base, ctx->devices[i].device_id, frame, payload_len + 2);
+            ESP_LOGD(TAG, "Forward CAN 0x%03lx to 0x%02x", msg->id, ctx->devices[i].device_id);
+
+            char espnow_log_buf[48];
+            snprintf(espnow_log_buf, sizeof(espnow_log_buf), "TX 0x%02X CAN 0x%03lX",
+                     ctx->devices[i].device_id, msg->id);
+            app_webui_log_espnow(espnow_log_buf);
+        }
+    }
+#endif
+}
+
 static void ir_rx_callback(const uint8_t *data, size_t len) {
     if (s_base_ctx == NULL) return;
 
@@ -293,6 +345,58 @@ static void espnow_rx_cb(const uint8_t *mac, const uint8_t *data, int len) {
 
     if (s_base_ctx != NULL) {
         espnow_base_process_rx(&s_base_ctx->espnow_base, mac, data, (size_t)len);
+
+        if (len >= sizeof(ir_proto_hdr_t) + 2) {
+            const ir_proto_hdr_t *hdr = (const ir_proto_hdr_t *)data;
+            uint8_t type = ir_ctrl_type(hdr->ctrl);
+
+            char espnow_log_buf[48];
+            snprintf(espnow_log_buf, sizeof(espnow_log_buf), "RX 0x%02X type=0x%02X len=%d",
+                     hdr->slave_id, hdr->ctrl, len);
+            app_webui_log_espnow(espnow_log_buf);
+
+            if (hdr->header == IR_PROTO_HEADER && type == IR_CTRL_RSP) {
+                uint8_t device_id = hdr->slave_id;
+
+                if (!biz_is_device_dual_online(s_base_ctx, device_id)) {
+                    ESP_LOGD(TAG, "ESPNOW RSP filtered: 0x%02x not dual online", device_id);
+                    return;
+                }
+
+                size_t payload_len = len - sizeof(ir_proto_hdr_t) - 2;
+                if (payload_len >= 13) {
+                    uint16_t received_crc = (uint16_t)data[len - 2] | ((uint16_t)data[len - 1] << 8);
+                    uint16_t calc_crc = crc16_calc(&data[2], len - 4);
+                    if (received_crc == calc_crc) {
+                        const uint8_t *can_data = hdr->data;
+
+                        bsp_twai_msg_t tx_msg;
+                        tx_msg.id = ((uint32_t)can_data[0] << 24) | ((uint32_t)can_data[1] << 16) |
+                                    ((uint32_t)can_data[2] << 8) | (uint32_t)can_data[3];
+                        tx_msg.dlc = can_data[4];
+                        memcpy(tx_msg.data, &can_data[5], 8);
+                        tx_msg.extd = 0;
+                        tx_msg.rtr = 0;
+
+                        esp_err_t ret = app_twai_transmit(&tx_msg, pdMS_TO_TICKS(5));
+                        if (ret == ESP_OK) {
+                            s_base_ctx->tx_frames++;
+                            ESP_LOGI(TAG, "ESPNOW RSP from 0x%02x: CAN 0x%03lx", device_id, tx_msg.id);
+
+                            char twai_log_buf[64];
+                            snprintf(twai_log_buf, sizeof(twai_log_buf),
+                                     "TX 0x%03lX [%02X %02X %02X %02X %02X %02X %02X %02X]",
+                                     tx_msg.id, tx_msg.data[0], tx_msg.data[1], tx_msg.data[2],
+                                     tx_msg.data[3], tx_msg.data[4], tx_msg.data[5],
+                                     tx_msg.data[6], tx_msg.data[7]);
+                            app_webui_log_twai(twai_log_buf);
+                        } else {
+                            s_base_ctx->tx_errors++;
+                        }
+                    }
+                }
+            }
+        }
     }
     if (s_device_ctx != NULL) {
         espnow_device_process_rx(&s_device_ctx->espnow_device, mac, data, (size_t)len);
@@ -412,6 +516,7 @@ static void device_send_task(void *arg) {
     biz_ctx_t *ctx = (biz_ctx_t *)arg;
 
     uint32_t seq = 0;
+    bool espnow_connected = false;
 
 #if WIRELESSID_WIRELESS_ENABLE
     bsp_espnow_register_recv_cb(espnow_rx_cb);
@@ -459,18 +564,28 @@ static void device_send_task(void *arg) {
             int written = bsp_ir_hw_write(frame, payload_len + 2);
             if (written > 0) {
                 ctx->tx_frames++;
-                ESP_LOGI(TAG, "IR TX: CAN 0x%03lx DLC=%d [%02X %02X %02X %02X %02X %02X %02X %02X]",
-                         latest.id, latest.dlc,
-                         latest.data[0], latest.data[1], latest.data[2], latest.data[3],
-                         latest.data[4], latest.data[5], latest.data[6], latest.data[7]);
-                bsp_display_printf(2, 0, "CAN:0x%03lx TX:%" PRIu32, latest.id, ctx->tx_frames);
-                bsp_display_printf(3, 0, "D:%02X%02X%02X%02X%02X%02X%02X%02X",
-                                   latest.data[0], latest.data[1], latest.data[2], latest.data[3],
-                                   latest.data[4], latest.data[5], latest.data[6], latest.data[7]);
-                bsp_display_refresh();
+                ESP_LOGD(TAG, "IR TX: CAN 0x%03lx", latest.id);
             } else {
                 ctx->tx_errors++;
             }
+
+#if WIRELESSID_WIRELESS_ENABLE
+            if (espnow_connected) {
+                uint8_t broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+                esp_err_t ret = bsp_espnow_send(broadcast_mac, frame, payload_len + 2);
+                if (ret == ESP_OK) {
+                    ESP_LOGD(TAG, "ESPNOW TX: CAN 0x%03lx", latest.id);
+                } else {
+                    ESP_LOGW(TAG, "ESPNOW TX failed: %d", ret);
+                }
+            }
+#endif
+
+            bsp_display_printf(2, 0, "CAN:0x%03lx TX:%" PRIu32, latest.id, ctx->tx_frames);
+            bsp_display_printf(3, 0, "D:%02X%02X%02X%02X%02X%02X%02X%02X",
+                               latest.data[0], latest.data[1], latest.data[2], latest.data[3],
+                               latest.data[4], latest.data[5], latest.data[6], latest.data[7]);
+            bsp_display_refresh();
         } else {
             static uint32_t s_ping_counter = 0;
             if (++s_ping_counter >= (BIZ_IR_HEARTBEAT_MS / BIZ_DEVICE_SEND_INTERVAL_MS)) {
@@ -495,6 +610,10 @@ static void device_send_task(void *arg) {
                 ESP_LOGD(TAG, "IR PING TX");
             }
         }
+
+#if WIRELESSID_WIRELESS_ENABLE
+        espnow_connected = ctx->espnow_device.registered;
+#endif
 
         vTaskDelay(pdMS_TO_TICKS(BIZ_DEVICE_SEND_INTERVAL_MS));
     }

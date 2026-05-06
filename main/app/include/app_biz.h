@@ -80,3 +80,4 @@ void biz_get_stats(biz_ctx_t *ctx, uint32_t *tx, uint32_t *rx, uint32_t *tx_err,
 void biz_update_ir_online(biz_ctx_t *ctx, uint8_t device_id);
 void biz_update_espnow_online(biz_ctx_t *ctx, uint8_t device_id);
 void biz_check_timeouts(biz_ctx_t *ctx);
+void biz_forward_can_to_devices(biz_ctx_t *ctx, const bsp_twai_msg_t *msg);

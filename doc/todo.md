@@ -700,3 +700,25 @@
   - `main/app/app_biz.c`：实现双在线检测逻辑
   - `main/app/app_webui.c`：新增设备列表显示，颜色区分在线状态
   - `README.md`/`doc/todo.md`：更新文档
+
+### 本轮进度更新（ESP-NOW 双向透传，2026-05-06）
+
+- 实现内容：
+  - 设备端双在线时使用 ESP-NOW + 红外同时发送 CAN 数据
+  - 基站端接收 ESP-NOW 数据并转发到 CAN 总线
+  - 基站端向双在线设备转发 CAN 数据（通过 ESP-NOW）
+  - 双在线过滤：只有双在线设备的 ESP-NOW 数据才转发到 CAN
+  - WebUI ESP-NOW 终端显示实时收发日志
+- 问题修复：
+  - 修复设备端调用 `espnow_base_send_cmd` 崩溃问题
+    - 根因：设备端未初始化 `espnow_base.tx_mutex`
+    - 修复：使用 `bsp_espnow_send()` 直接发送到广播 MAC
+- 关键逻辑：
+  - 设备端：红外始终发送，ESP-NOW 同时发送（如果已连接）
+  - 基站端：ESP-NOW 接收时检查设备是否双在线
+  - 双在线判断：`ir_online && espnow_online`
+- 文件变更：
+  - `main/app/include/app_biz.h`：新增 `biz_forward_can_to_devices` API
+  - `main/app/app_biz.c`：实现 ESP-NOW 双向透传和双在线过滤
+  - `main/app/app_devtest.c`：调用 `biz_forward_can_to_devices`
+  - `README.md`/`doc/todo.md`：更新文档
