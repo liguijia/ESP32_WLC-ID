@@ -91,6 +91,12 @@ static const char HTML_PAGE[] =
     ".terminal .tx{color:var(--term-green)}"
     ".terminal .rx{color:var(--term-cyan)}"
     ".terminal .err{color:#f44747}"
+    ".dev-list{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem}"
+    ".dev-item{padding:0.3rem 0.6rem;border-radius:6px;font-family:var(--mono);"
+    "font-size:0.85rem;font-weight:600;border:2px solid transparent}"
+    ".dev-both{background:#19875433;color:#198754;border-color:#198754}"
+    ".dev-espnow{background:#0d6efd33;color:#0d6efd;border-color:#0d6efd}"
+    ".dev-ir{background:#dc354533;color:#dc3545;border-color:#dc3545}"
     "footer{text-align:center;padding:1.2rem 0;color:var(--muted);font-size:0.75rem}"
     "</style>"
     "</head>"
@@ -101,7 +107,7 @@ static const char HTML_PAGE[] =
     "<div class='row'><span class='lbl'>ID</span><span class='val' id='d-id'>-</span></div>"
     "<div class='row'><span class='lbl'>Uptime</span><span class='val' id='d-up'>-</span></div>"
     "<div class='row'><span class='lbl'>Online</span><span class='val big' id='d-peer'>-</span></div>"
-    "<div class='row'><span class='lbl'>Peers</span><span class='val' id='d-ids' style='font-size:0.8rem;word-break:break-all'>-</span></div>"
+    "<div id='d-list' style='margin-top:0.5rem'></div>"
     "</article>"
     "<article><header><h2>TWAI (CAN)</h2></header>"
     "<div class='row'><span class='lbl'>TX</span><span class='val' id='c-tx'>-</span></div>"
@@ -134,15 +140,28 @@ static const char HTML_PAGE[] =
     "return l;"
     "}).join('\\n');"
     "el.scrollTop=el.scrollHeight;}"
+    "function renderDevices(devices){"
+    "var el=document.getElementById('d-list');if(!el)return;"
+    "if(!devices||devices.length===0){el.innerHTML='<span style=color:var(--muted)>No devices</span>';return;}"
+    "el.innerHTML='<div class=dev-list>'+devices.map(function(d){"
+    "var id='0x'+d.id.toString(16).toUpperCase().padStart(2,'0');"
+    "var cls='dev-item ';"
+    "if(d.espnow&&d.ir)cls+='dev-both';"
+    "else if(d.espnow)cls+='dev-espnow';"
+    "else if(d.ir)cls+='dev-ir';"
+    "else cls+='dev-espnow';"
+    "return'<span class=\"'+cls+'\">'+id+'</span>';"
+    "}).join('')+'</div>';}"
     "function poll(){"
     "fetch('/api/status').then(function(r){return r.json()})"
     ".then(function(d){"
     "u('d-id','0x'+d.id.toString(16).toUpperCase().padStart(2,'0'));"
     "u('d-up',d.uptime+'s');"
-    "u('d-peer',d.peers);u('d-ids',d.peer_ids||'none');"
+    "u('d-peer',d.peers);"
     "u('c-tx',d.twai.tx);u('c-rx',d.twai.rx);u('c-dr',d.twai.drop);"
     "u('i-tx',d.ir.tx);u('i-rx',d.ir.rx);u('i-err',d.ir.crc_err);"
     "u('e-tx',d.espnow.tx);u('e-rx',d.espnow.rx);u('e-an',d.espnow.announce);"
+    "if(d.devices)renderDevices(d.devices);"
     "if(d.log_twai)renderLog('c-log',d.log_twai);"
     "if(d.log_ir)renderLog('i-log',d.log_ir);"
     "if(d.log_espnow)renderLog('e-log',d.log_espnow);"
@@ -171,17 +190,32 @@ static esp_err_t handle_api_status(httpd_req_t *req) {
     static char twai_log[WEBUI_LOG_LINES * (WEBUI_LOG_LINE_MAX + 4)];
     static char ir_log[WEBUI_LOG_LINES * (WEBUI_LOG_LINE_MAX + 4)];
     static char espnow_log[WEBUI_LOG_LINES * (WEBUI_LOG_LINE_MAX + 4)];
-    static char json[1024];
+    static char json[2048];
 
     log_to_json(&log_t, twai_log, sizeof(twai_log));
     log_to_json(&log_i, ir_log, sizeof(ir_log));
     log_to_json(&log_e, espnow_log, sizeof(espnow_log));
+
+    char devices_json[512] = "[";
+    size_t dpos = 1;
+    for (size_t i = 0; i < st.device_count && dpos < sizeof(devices_json) - 20; i++) {
+        if (i > 0) devices_json[dpos++] = ',';
+        int n = snprintf(devices_json + dpos, sizeof(devices_json) - dpos,
+                         "{\"id\":%d,\"espnow\":%s,\"ir\":%s}",
+                         st.devices[i].device_id,
+                         st.devices[i].espnow_online ? "true" : "false",
+                         st.devices[i].ir_online ? "true" : "false");
+        if (n > 0) dpos += n;
+    }
+    devices_json[dpos++] = ']';
+    devices_json[dpos] = '\0';
 
     int len = snprintf(json, sizeof(json),
         "{\"id\":%d,\"uptime\":%" PRIu32 ",\"peers\":%d,\"peer_ids\":\"%s\","
         "\"twai\":{\"tx\":%" PRIu32 ",\"rx\":%" PRIu32 ",\"drop\":%" PRIu32 "},"
         "\"ir\":{\"tx\":%" PRIu32 ",\"rx\":%" PRIu32 ",\"crc_err\":%" PRIu32 "},"
         "\"espnow\":{\"tx\":%" PRIu32 ",\"rx\":%" PRIu32 ",\"announce\":%" PRIu32 "},"
+        "\"devices\":%s,"
         "\"log_twai\":%s,\"log_ir\":%s,\"log_espnow\":%s}",
         st.device_id, st.uptime_sec, (int)st.peer_count,
         st.peer_ids,
@@ -191,6 +225,7 @@ static esp_err_t handle_api_status(httpd_req_t *req) {
         st.ir_rx_crc_err,
         st.espnow_tx_frames, st.espnow_rx_frames,
         st.espnow_announce_recv,
+        devices_json,
         twai_log, ir_log, espnow_log);
 
     httpd_resp_set_type(req, "application/json");

@@ -2,9 +2,16 @@
 
 #include "bsp_common.h"
 
-#define WEBUI_PEER_STR_MAX 64
+#define WEBUI_PEER_STR_MAX 128
 #define WEBUI_LOG_LINES     12
 #define WEBUI_LOG_LINE_MAX  48
+#define WEBUI_MAX_DEVICES   4
+
+typedef struct {
+    uint8_t device_id;
+    bool espnow_online;
+    bool ir_online;
+} webui_device_status_t;
 
 typedef struct app_webui_status {
     uint32_t uptime_sec;
@@ -20,6 +27,8 @@ typedef struct app_webui_status {
     uint32_t espnow_tx_frames;
     uint32_t espnow_rx_frames;
     uint32_t espnow_announce_recv;
+    webui_device_status_t devices[WEBUI_MAX_DEVICES];
+    size_t device_count;
 } app_webui_status_t;
 
 typedef struct app_webui_log {

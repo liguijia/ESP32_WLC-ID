@@ -141,6 +141,8 @@
 | WebUI 集成 | ✅ | 实时显示在线设备、IR/TWAI/ESP-NOW 统计和日志 |
 | ESP-NOW 集成 | ✅ | 设备发现、心跳、在线状态管理 |
 | 无线功能开关 | ✅ | `WIRELESSID_WIRELESS_ENABLE` 控制 WebUI/ESP-NOW |
+| 双在线检测 | ✅ | 红外+ESP-NOW 联合判断设备在线状态 |
+| 设备在线统计 | ✅ | 按设备 ID 统计在线数量，与在线方式无关 |
 
 ### 待开发
 

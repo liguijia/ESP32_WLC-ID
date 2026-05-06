@@ -17,6 +17,8 @@
 #define BIZ_CMD_TIMEOUT_MS    10
 #define BIZ_MAX_DEVICES       4
 #define BIZ_DATA_TIMEOUT_MS   100
+#define BIZ_IR_HEARTBEAT_MS   200
+#define BIZ_IR_TIMEOUT_MS     1000
 
 typedef enum {
     BIZ_ROLE_BASE   = 0,
@@ -38,8 +40,10 @@ typedef struct {
 
 typedef struct {
     uint8_t device_id;
-    bool online;
-    uint32_t last_seen_ms;
+    bool espnow_online;
+    bool ir_online;
+    uint32_t last_ir_seen_ms;
+    uint32_t last_espnow_seen_ms;
     uint32_t rx_count;
     uint32_t tx_count;
 } biz_device_info_t;
@@ -73,3 +77,6 @@ bool biz_can_get_latest_if_fresh(biz_ctx_t *ctx, bsp_twai_msg_t *msg, uint32_t m
 bool biz_can_has_fresh_data(biz_ctx_t *ctx, uint32_t max_age_ms);
 
 void biz_get_stats(biz_ctx_t *ctx, uint32_t *tx, uint32_t *rx, uint32_t *tx_err, uint32_t *rx_err);
+void biz_update_ir_online(biz_ctx_t *ctx, uint8_t device_id);
+void biz_update_espnow_online(biz_ctx_t *ctx, uint8_t device_id);
+void biz_check_timeouts(biz_ctx_t *ctx);

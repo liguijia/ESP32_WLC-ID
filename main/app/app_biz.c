@@ -122,6 +122,67 @@ void biz_get_stats(biz_ctx_t *ctx, uint32_t *tx, uint32_t *rx,
     if (rx_err) *rx_err = ctx->rx_errors;
 }
 
+void biz_update_ir_online(biz_ctx_t *ctx, uint8_t device_id) {
+    if (ctx == NULL) return;
+    for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+        if (ctx->devices[i].device_id == device_id) {
+            ctx->devices[i].ir_online = true;
+            ctx->devices[i].last_ir_seen_ms = now_ms();
+            return;
+        }
+    }
+    for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+        if (ctx->devices[i].device_id == 0) {
+            ctx->devices[i].device_id = device_id;
+            ctx->devices[i].ir_online = true;
+            ctx->devices[i].last_ir_seen_ms = now_ms();
+            ctx->device_count++;
+            return;
+        }
+    }
+}
+
+void biz_update_espnow_online(biz_ctx_t *ctx, uint8_t device_id) {
+    if (ctx == NULL) return;
+    for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+        if (ctx->devices[i].device_id == device_id) {
+            ctx->devices[i].espnow_online = true;
+            ctx->devices[i].last_espnow_seen_ms = now_ms();
+            return;
+        }
+    }
+    for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+        if (ctx->devices[i].device_id == 0) {
+            ctx->devices[i].device_id = device_id;
+            ctx->devices[i].espnow_online = true;
+            ctx->devices[i].last_espnow_seen_ms = now_ms();
+            ctx->device_count++;
+            return;
+        }
+    }
+}
+
+void biz_check_timeouts(biz_ctx_t *ctx) {
+    if (ctx == NULL) return;
+    uint32_t now = now_ms();
+    for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+        if (ctx->devices[i].device_id == 0) continue;
+        if (ctx->devices[i].ir_online && (now - ctx->devices[i].last_ir_seen_ms > BIZ_IR_TIMEOUT_MS)) {
+            ctx->devices[i].ir_online = false;
+            ESP_LOGI(TAG, "IR timeout: 0x%02x", ctx->devices[i].device_id);
+        }
+        if (ctx->devices[i].espnow_online && (now - ctx->devices[i].last_espnow_seen_ms > ESPNOW_PEER_TIMEOUT_MS)) {
+            ctx->devices[i].espnow_online = false;
+            ESP_LOGI(TAG, "ESP-NOW timeout: 0x%02x", ctx->devices[i].device_id);
+        }
+        if (!ctx->devices[i].ir_online && !ctx->devices[i].espnow_online) {
+            ESP_LOGI(TAG, "device offline: 0x%02x", ctx->devices[i].device_id);
+            ctx->devices[i].device_id = 0;
+            if (ctx->device_count > 0) ctx->device_count--;
+        }
+    }
+}
+
 static uint16_t crc16_calc(const uint8_t *data, size_t len) {
     return esp_crc16_le(0, data, len);
 }
@@ -140,9 +201,22 @@ static void ir_rx_callback(const uint8_t *data, size_t len) {
     }
 
     uint8_t type = ir_ctrl_type(hdr->ctrl);
+
+    if (type == IR_CTRL_PING) {
+        uint16_t received_crc = (uint16_t)data[len - 2] | ((uint16_t)data[len - 1] << 8);
+        uint16_t calc_crc = crc16_calc(&data[2], len - 4);
+        if (received_crc == calc_crc) {
+            biz_update_ir_online(s_base_ctx, hdr->slave_id);
+            ESP_LOGD(TAG, "IR PING from 0x%02x", hdr->slave_id);
+        }
+        return;
+    }
+
     if (type != IR_CTRL_RSP) {
         return;
     }
+
+    biz_update_ir_online(s_base_ctx, hdr->slave_id);
 
     size_t payload_len = len - sizeof(ir_proto_hdr_t) - 2;
     if (payload_len < 13) {
@@ -229,23 +303,19 @@ static void base_webui_update_task(void *arg) {
     biz_ctx_t *ctx = (biz_ctx_t *)arg;
 
     while (1) {
+        biz_check_timeouts(ctx);
+
         espnow_base_check_peers(&ctx->espnow_base, ESPNOW_PEER_TIMEOUT_MS);
 
         espnow_base_stats_t espnow_st;
         espnow_base_get_stats(&ctx->espnow_base, &espnow_st);
 
-        size_t online = espnow_base_online_count(&ctx->espnow_base);
-
         espnow_peer_t peers[ESPNOW_MAX_PEERS];
         size_t peer_count = 0;
         espnow_base_get_peers(&ctx->espnow_base, peers, ESPNOW_MAX_PEERS, &peer_count);
 
-        char peer_ids[WEBUI_PEER_STR_MAX] = "";
-        size_t pos = 0;
-        for (size_t i = 0; i < peer_count && pos < WEBUI_PEER_STR_MAX - 4; i++) {
-            int n = snprintf(peer_ids + pos, WEBUI_PEER_STR_MAX - pos,
-                             "%s%02X", i > 0 ? " " : "", peers[i].device_id);
-            if (n > 0) pos += (size_t)n;
+        for (size_t i = 0; i < peer_count; i++) {
+            biz_update_espnow_online(ctx, peers[i].device_id);
         }
 
         uint32_t twai_tx = 0, twai_rx = 0;
@@ -254,7 +324,7 @@ static void base_webui_update_task(void *arg) {
         app_webui_status_t wst = {
             .uptime_sec = (uint32_t)(esp_timer_get_time() / 1000000),
             .device_id = ctx->self_id,
-            .peer_count = online,
+            .peer_count = ctx->device_count,
             .twai_tx_frames = twai_tx,
             .twai_rx_frames = twai_rx,
             .twai_tx_drops = ctx->tx_errors,
@@ -264,11 +334,30 @@ static void base_webui_update_task(void *arg) {
             .espnow_tx_frames = espnow_st.tx_frames,
             .espnow_rx_frames = espnow_st.rx_frames,
             .espnow_announce_recv = espnow_st.announce_recv,
+            .device_count = 0,
         };
-        strncpy(wst.peer_ids, peer_ids, WEBUI_PEER_STR_MAX - 1);
+
+        for (int i = 0; i < BIZ_MAX_DEVICES && wst.device_count < WEBUI_MAX_DEVICES; i++) {
+            if (ctx->devices[i].device_id != 0) {
+                wst.devices[wst.device_count].device_id = ctx->devices[i].device_id;
+                wst.devices[wst.device_count].espnow_online = ctx->devices[i].espnow_online;
+                wst.devices[wst.device_count].ir_online = ctx->devices[i].ir_online;
+                wst.device_count++;
+            }
+        }
+
+        size_t online_count = 0;
+        for (int i = 0; i < BIZ_MAX_DEVICES; i++) {
+            if (ctx->devices[i].device_id != 0 &&
+                (ctx->devices[i].ir_online || ctx->devices[i].espnow_online)) {
+                online_count++;
+            }
+        }
+        wst.peer_count = online_count;
+
         app_webui_update_status(&wst);
 
-        bsp_display_printf(5, 0, "PEERS:%d", (int)online);
+        bsp_display_printf(5, 0, "DEV:%d", (int)online_count);
         bsp_display_refresh();
 
         vTaskDelay(pdMS_TO_TICKS(BIZ_WEBUI_UPDATE_INTERVAL_MS));
@@ -381,6 +470,29 @@ static void device_send_task(void *arg) {
                 bsp_display_refresh();
             } else {
                 ctx->tx_errors++;
+            }
+        } else {
+            static uint32_t s_ping_counter = 0;
+            if (++s_ping_counter >= (BIZ_IR_HEARTBEAT_MS / BIZ_DEVICE_SEND_INTERVAL_MS)) {
+                s_ping_counter = 0;
+
+                uint8_t frame[16];
+                ir_proto_hdr_t *hdr = (ir_proto_hdr_t *)frame;
+
+                hdr->header = IR_PROTO_HEADER;
+                hdr->ctrl = IR_CTRL_PING;
+                hdr->master_id = 0xA0;
+                hdr->slave_id = ctx->self_id;
+                hdr->seq = (uint8_t)(seq++ & 0xFF);
+                hdr->data_len = 0;
+
+                size_t payload_len = sizeof(ir_proto_hdr_t);
+                uint16_t crc = crc16_calc(&frame[2], payload_len - 2);
+                frame[payload_len] = (uint8_t)(crc & 0xFF);
+                frame[payload_len + 1] = (uint8_t)((crc >> 8) & 0xFF);
+
+                bsp_ir_hw_write(frame, payload_len + 2);
+                ESP_LOGD(TAG, "IR PING TX");
             }
         }
 

@@ -671,3 +671,32 @@
   - `main/app/app_devtest.c`：简化初始化逻辑，移除重复代码
   - `main/app/app_webui.c`：添加初始化检查，优化 mutex 超时
   - `README.md`：更新业务层状态
+
+### 本轮进度更新（双在线检测，2026-05-06）
+
+- 实现内容：
+  - 新增红外心跳协议 `IR_CTRL_PING`（0x80）
+  - 设备端无 CAN 数据时每 200ms 发送红外心跳
+  - 设备端有 CAN 数据时正常发送，基站端也标记红外在线
+  - 基站端识别红外心跳和 CAN 数据帧，更新红外在线状态
+  - WebUI 设备列表显示在线状态：
+    - 绿色：双在线（ESP-NOW + 红外）
+    - 蓝色：仅 ESP-NOW 在线
+    - 红色：仅红外在线
+  - 设备 ID 以 `0xD0` 格式显示
+  - 在线设备数量按设备 ID 统计（与在线方式无关）
+  - 设备完全离线后自动从列表移除
+- 关键 API：
+  - `biz_update_ir_online()`：更新红外在线状态
+  - `biz_update_espnow_online()`：更新 ESP-NOW 在线状态
+  - `biz_check_timeouts()`：检查超时，清除离线设备
+- 超时参数：
+  - `BIZ_IR_TIMEOUT_MS`：红外超时 1000ms
+  - `ESPNOW_PEER_TIMEOUT_MS`：ESP-NOW 超时 6000ms
+- 文件变更：
+  - `main/app/include/ir_proto_common.h`：新增 `IR_CTRL_PING` 定义
+  - `main/app/include/app_biz.h`：新增设备在线状态字段和 API
+  - `main/app/include/app_webui.h`：新增 `webui_device_status_t` 结构
+  - `main/app/app_biz.c`：实现双在线检测逻辑
+  - `main/app/app_webui.c`：新增设备列表显示，颜色区分在线状态
+  - `README.md`/`doc/todo.md`：更新文档
