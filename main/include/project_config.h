@@ -51,6 +51,21 @@
 #define WIRELESSID_WIRELESS_ENABLE 1
 
 // =============================================================================
+// CAN 软件过滤器配置
+// =============================================================================
+// 过滤器模式：
+//   0 = 禁用（接收所有 CAN ID）
+//   1 = 白名单模式（只接收列表中的 CAN ID）
+#define WIRELESSID_CAN_FILTER_MODE 0
+
+// 白名单 CAN ID 列表（最多 4 个）
+// 未使用的条目设为 0xFFFFFFFF
+#define WIRELESSID_CAN_FILTER_ID_0 0x123
+#define WIRELESSID_CAN_FILTER_ID_1 0x456
+#define WIRELESSID_CAN_FILTER_ID_2 0xFFFFFFFF
+#define WIRELESSID_CAN_FILTER_ID_3 0xFFFFFFFF
+
+// =============================================================================
 // 调试/测试功能开关（默认关闭，开发调试时按需打开）
 // =============================================================================
 // UART0 回环测试：RX 回调将数据回显

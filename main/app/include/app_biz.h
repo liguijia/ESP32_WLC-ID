@@ -19,6 +19,13 @@
 #define BIZ_DATA_TIMEOUT_MS   100
 #define BIZ_IR_HEARTBEAT_MS   200
 #define BIZ_IR_TIMEOUT_MS     1000
+#define BIZ_CAN_FILTER_MAX    8
+
+typedef enum {
+    BIZ_CAN_FILTER_DISABLE = 0,
+    BIZ_CAN_FILTER_WHITELIST = 1,
+    BIZ_CAN_FILTER_BLACKLIST = 2,
+} biz_can_filter_mode_t;
 
 typedef enum {
     BIZ_ROLE_BASE   = 0,

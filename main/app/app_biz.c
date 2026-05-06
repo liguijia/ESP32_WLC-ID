@@ -239,6 +239,26 @@ void biz_forward_can_to_devices(biz_ctx_t *ctx, const bsp_twai_msg_t *msg) {
 #endif
 }
 
+static bool biz_is_can_id_allowed(uint32_t can_id) {
+#if WIRELESSID_CAN_FILTER_MODE == 1
+    #if WIRELESSID_CAN_FILTER_ID_0 != 0xFFFFFFFF
+    if (can_id == WIRELESSID_CAN_FILTER_ID_0) return true;
+    #endif
+    #if WIRELESSID_CAN_FILTER_ID_1 != 0xFFFFFFFF
+    if (can_id == WIRELESSID_CAN_FILTER_ID_1) return true;
+    #endif
+    #if WIRELESSID_CAN_FILTER_ID_2 != 0xFFFFFFFF
+    if (can_id == WIRELESSID_CAN_FILTER_ID_2) return true;
+    #endif
+    #if WIRELESSID_CAN_FILTER_ID_3 != 0xFFFFFFFF
+    if (can_id == WIRELESSID_CAN_FILTER_ID_3) return true;
+    #endif
+    return false;
+#else
+    return true;
+#endif
+}
+
 static void ir_rx_callback(const uint8_t *data, size_t len) {
     if (s_base_ctx == NULL) return;
 
@@ -296,6 +316,13 @@ static void ir_rx_callback(const uint8_t *data, size_t len) {
     memcpy(tx_msg.data, &can_data[5], 8);
     tx_msg.extd = 0;
     tx_msg.rtr = 0;
+
+#if WIRELESSID_CAN_FILTER_MODE == 1
+    if (!biz_is_can_id_allowed(tx_msg.id)) {
+        ESP_LOGD(TAG, "IR CAN 0x%03lX filtered", tx_msg.id);
+        return;
+    }
+#endif
 
     esp_err_t ret = app_twai_transmit(&tx_msg, pdMS_TO_TICKS(5));
     if (ret == ESP_OK) {
@@ -377,6 +404,13 @@ static void espnow_rx_cb(const uint8_t *mac, const uint8_t *data, int len) {
                         memcpy(tx_msg.data, &can_data[5], 8);
                         tx_msg.extd = 0;
                         tx_msg.rtr = 0;
+
+#if WIRELESSID_CAN_FILTER_MODE == 1
+                        if (!biz_is_can_id_allowed(tx_msg.id)) {
+                            ESP_LOGD(TAG, "ESPNOW CAN 0x%03lX filtered", tx_msg.id);
+                            return;
+                        }
+#endif
 
                         esp_err_t ret = app_twai_transmit(&tx_msg, pdMS_TO_TICKS(5));
                         if (ret == ESP_OK) {

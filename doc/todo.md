@@ -722,3 +722,24 @@
   - `main/app/app_biz.c`：实现 ESP-NOW 双向透传和双在线过滤
   - `main/app/app_devtest.c`：调用 `biz_forward_can_to_devices`
   - `README.md`/`doc/todo.md`：更新文档
+
+### 本轮进度更新（CAN 软件过滤器，2026-05-06）
+
+- 尝试内容：
+  - 尝试实现 CAN 硬件过滤器（使用 TWAI 控制器硬件过滤）
+  - 发现 ESP32-C3 TWAI 硬件过滤器配置复杂且不可靠
+  - 决定撤回硬件过滤器，只保留软件过滤
+- 最终实现：
+  - CAN 软件过滤器（白名单模式）
+  - 在 `ir_rx_callback` 和 `espnow_rx_cb` 中检查 CAN ID
+  - 配置：`WIRELESSID_CAN_FILTER_MODE` 和 `WIRELESSID_CAN_FILTER_ID_x`
+- 问题记录：
+  - 硬件过滤器配置逻辑复杂，需要正确的位对齐
+  - 运行时重新配置硬件过滤器可能导致崩溃
+  - ESP32-C3 TWAI 硬件过滤器可靠性不足
+- 文件变更：
+  - `main/include/project_config.h`：新增软件过滤器配置
+  - `main/app/include/app_biz.h`：新增 `biz_is_can_id_allowed` 函数
+  - `main/app/app_biz.c`：实现软件过滤逻辑
+  - `main/bsp/bsp_twai.c`：恢复原始实现
+  - `README.md`/`doc/todo.md`：更新文档

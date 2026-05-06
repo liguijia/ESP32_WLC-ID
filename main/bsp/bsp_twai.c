@@ -109,18 +109,12 @@ esp_err_t bsp_twai_config_filter(const bsp_twai_filter_t *filters, size_t count)
 
     const pinmux_twai_config_t *cfg = pinmux_twai_get_config();
     twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(cfg->tx_gpio, cfg->rx_gpio, TWAI_MODE_NORMAL);
-    g.rx_queue_len  = 32;
-    g.tx_queue_len  = 16;
-    g.alerts_enabled = TWAI_ALERT_ALL;
+    g.rx_queue_len  = 64;
+    g.tx_queue_len  = 32;
+    g.alerts_enabled = TWAI_ALERT_RX_DATA;
 
     const twai_timing_config_t *t = get_timing(s_baud);
-    twai_filter_config_t f = { .acceptance_code = 0, .acceptance_mask = 0xFFFFFFFF, .single_filter = false };
-
-    size_t n = count > 4 ? 4 : count;
-    for (size_t i = 0; i < n; i++) {
-        f.acceptance_code |= (filters[i].id & 0x7FF) << (i * 8);
-        f.acceptance_mask |= (filters[i].mask & 0x7FF) << (i * 8);
-    }
+    twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
     ESP_RETURN_ON_ERROR(twai_driver_install(&g, t, &f), TAG, "reinstall");
     ESP_RETURN_ON_ERROR(twai_start(), TAG, "restart");
