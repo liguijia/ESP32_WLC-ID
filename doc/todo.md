@@ -639,3 +639,35 @@
   - 测试多设备场景（4 个设备端同时发送）
   - 实现设备端 ID 错开发送时序
   - 添加设备在线检测和状态管理
+
+### 本轮进度更新（WebUI + ESP-NOW 业务集成，2026-05-06）
+
+- 实现内容：
+  - 将 WebUI 和 ESP-NOW 组网集成到业务逻辑 `app_biz.c`
+  - 基站端自动初始化 WebUI 和 ESP-NOW，无需额外配置
+  - 设备端自动初始化 ESP-NOW 心跳
+  - WebUI 实时显示在线设备、IR/TWAI/ESP-NOW 统计和日志
+- 问题修复：
+  - 修复设备端接收到 CAN 报文时频繁重启的问题
+    - 根因：`biz_init()` 之前注册了 `twai_rx_cb`，导致 mutex 为 NULL
+    - 修复：添加防御性 NULL 检查
+  - 修复设备端 WebUI 崩溃问题
+    - 根因：设备端调用 `app_webui_log_twai()` 但未初始化 WebUI
+    - 修复：移除设备端的 WebUI 日志调用
+  - 优化 WebUI 日志性能
+    - 降低日志频率：每 10 帧记录一次（原来每帧都记录）
+    - 使用超时 mutex：避免长时间阻塞
+- 新增配置：
+  - `WIRELESSID_WIRELESS_ENABLE`：无线功能开关
+    - 1 = 开启 WebUI + ESP-NOW（默认）
+    - 0 = 关闭无线功能，仅保留红外 CAN 透传
+  - 自动角色推断：根据 `WIRELESSID_DEVICE_ID` 自动判断基站/设备
+    - 0xA0-0xBF：基站端
+    - 0xD0-0xFE：设备端
+- 文件变更：
+  - `main/include/project_config.h`：新增 `WIRELESSID_WIRELESS_ENABLE`，移除 `WIRELESSID_BIZ_ROLE`
+  - `main/app/include/app_biz.h`：新增 `espnow_base` 和 `espnow_device` 字段
+  - `main/app/app_biz.c`：集成 WebUI 和 ESP-NOW，条件编译
+  - `main/app/app_devtest.c`：简化初始化逻辑，移除重复代码
+  - `main/app/app_webui.c`：添加初始化检查，优化 mutex 超时
+  - `README.md`：更新业务层状态

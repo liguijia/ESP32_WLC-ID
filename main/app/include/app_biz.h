@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_espnow.h"
+#include "app_espnow_device.h"
+#include "app_webui.h"
 #include "bsp_twai.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
@@ -56,6 +59,9 @@ typedef struct {
     uint32_t rx_frames;
     uint32_t tx_errors;
     uint32_t rx_errors;
+
+    espnow_base_t espnow_base;
+    espnow_device_t espnow_device;
 } biz_ctx_t;
 
 esp_err_t biz_init(biz_ctx_t *ctx, biz_role_t role, uint8_t self_id);

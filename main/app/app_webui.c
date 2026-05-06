@@ -21,6 +21,7 @@ static const char *TAG = "webui";
 
 static httpd_handle_t s_httpd;
 static SemaphoreHandle_t s_mutex;
+static bool s_initialized = false;
 static app_webui_status_t s_status;
 static app_webui_log_t s_log_twai;
 static app_webui_log_t s_log_ir;
@@ -269,6 +270,7 @@ esp_err_t app_webui_init(uint8_t device_id) {
         return ret;
     }
 
+    s_initialized = true;
     ESP_LOGI(TAG, "webui init ok, AP SSID=%s IP=192.168.4.1", s_ssid);
     return ESP_OK;
 }
@@ -285,21 +287,23 @@ void app_webui_update_status(const app_webui_status_t *status) {
 }
 
 void app_webui_log_twai(const char *msg) {
-    if (!msg) return;
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    log_append(&s_log_twai, msg);
-    xSemaphoreGive(s_mutex);
+    if (!msg || !s_initialized) return;
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        log_append(&s_log_twai, msg);
+        xSemaphoreGive(s_mutex);
+    }
 }
 
 void app_webui_log_ir(const char *msg) {
-    if (!msg) return;
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    log_append(&s_log_ir, msg);
-    xSemaphoreGive(s_mutex);
+    if (!msg || !s_initialized) return;
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        log_append(&s_log_ir, msg);
+        xSemaphoreGive(s_mutex);
+    }
 }
 
 void app_webui_log_espnow(const char *msg) {
-    if (!msg) return;
+    if (!msg || !s_initialized) return;
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     log_append(&s_log_espnow, msg);
     xSemaphoreGive(s_mutex);
