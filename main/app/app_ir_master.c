@@ -12,8 +12,8 @@
 static const char *TAG = "ir_master";
 
 #define IR_FRAME_OVERHEAD (sizeof(ir_proto_hdr_t) + 2)
-#define IR_ECHO_GUARD_MS  50
-#define IR_MASTER_TIMEOUT_MS 500
+#define IR_ECHO_GUARD_MS  5
+#define IR_MASTER_TIMEOUT_MS 50
 
 static uint16_t crc16_calc(const uint8_t *data, size_t len) {
     return esp_crc16_le(0, data, len);
@@ -33,6 +33,7 @@ static esp_err_t build_and_send(ir_master_t *self, uint8_t ctrl,
     hdr->master_id = self->id;
     hdr->slave_id = slave_id;
     hdr->seq = self->seq++;
+    hdr->data_len = (uint8_t)len;
 
     if (data && len > 0) {
         memcpy(hdr->data, data, len);
@@ -164,9 +165,13 @@ void ir_master_process_rx(ir_master_t *self, const uint8_t *frame, size_t len) {
         return;
     }
 
-    uint32_t elapsed_ms = (xTaskGetTickCount() - self->last_tx_tick) * portTICK_PERIOD_MS;
-    if (elapsed_ms < IR_ECHO_GUARD_MS) {
-        self->stats.rx_filtered++;
+    uint8_t type = ir_ctrl_type(hdr->ctrl);
+
+    if (type != IR_CTRL_RSP) {
+        return;
+    }
+
+    if (hdr->master_id != self->id) {
         return;
     }
 
@@ -182,31 +187,22 @@ void ir_master_process_rx(ir_master_t *self, const uint8_t *frame, size_t len) {
 
     self->stats.rx_frames++;
 
-    uint8_t type = ir_ctrl_type(hdr->ctrl);
-
-    ESP_LOGI(TAG, "RX frame: type=0x%02x master_id=0x%02x slave_id=0x%02x payload_len=%d data=[%02x %02x %02x]",
-             type, hdr->master_id, hdr->slave_id, (int)payload_len,
+    ESP_LOGI(TAG, "RSP from 0x%02x: payload_len=%d data=[%02x %02x %02x %02x]",
+             hdr->slave_id, (int)payload_len,
              payload_len > 0 ? hdr->data[0] : 0,
              payload_len > 1 ? hdr->data[1] : 0,
-             payload_len > 2 ? hdr->data[2] : 0);
+             payload_len > 2 ? hdr->data[2] : 0,
+             payload_len > 3 ? hdr->data[3] : 0);
 
-    if (type == IR_CTRL_RSP && hdr->master_id == self->id) {
-        xSemaphoreTake(self->mutex, portMAX_DELAY);
-        self->rsp_len = payload_len < IR_PROTO_MAX_PAYLOAD ? payload_len : IR_PROTO_MAX_PAYLOAD;
-        memcpy(self->rsp_buf, hdr->data, self->rsp_len);
-        self->rsp_slave_id = hdr->slave_id;
-        xSemaphoreGive(self->mutex);
+    xSemaphoreTake(self->mutex, portMAX_DELAY);
+    self->rsp_len = payload_len < IR_PROTO_MAX_PAYLOAD ? payload_len : IR_PROTO_MAX_PAYLOAD;
+    memcpy(self->rsp_buf, hdr->data, self->rsp_len);
+    self->rsp_slave_id = hdr->slave_id;
+    xSemaphoreGive(self->mutex);
 
-        ESP_LOGI(TAG, "RSP matched: rsp_len=%d rsp_buf=[%02x %02x %02x]",
-                 (int)self->rsp_len,
-                 self->rsp_len > 0 ? self->rsp_buf[0] : 0,
-                 self->rsp_len > 1 ? self->rsp_buf[1] : 0,
-                 self->rsp_len > 2 ? self->rsp_buf[2] : 0);
+    xSemaphoreGive(self->rsp_sem);
 
-        xSemaphoreGive(self->rsp_sem);
-
-        if (self->on_rsp) {
-            self->on_rsp(self, hdr->slave_id, hdr->data, payload_len);
-        }
+    if (self->on_rsp) {
+        self->on_rsp(self, hdr->slave_id, hdr->data, payload_len);
     }
 }

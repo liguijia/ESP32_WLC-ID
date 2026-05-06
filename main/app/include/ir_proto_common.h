@@ -28,6 +28,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  master_id;
     uint8_t  slave_id;
     uint8_t  seq;
+    uint8_t  data_len;
     uint8_t  data[];
 } ir_proto_hdr_t;
 

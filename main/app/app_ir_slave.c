@@ -31,6 +31,7 @@ static esp_err_t send_rsp(ir_slave_t *self, uint8_t master_id,
     hdr->master_id = master_id;
     hdr->slave_id = self->id;
     hdr->seq = self->seq++;
+    hdr->data_len = (uint8_t)len;
 
     if (data && len > 0) {
         memcpy(hdr->data, data, len);
@@ -41,13 +42,19 @@ static esp_err_t send_rsp(ir_slave_t *self, uint8_t master_id,
     frame[payload_len] = (uint8_t)(crc & 0xFF);
     frame[payload_len + 1] = (uint8_t)((crc >> 8) & 0xFF);
 
+    ESP_LOGI(TAG, "send_rsp: to=0x%02x from=0x%02x len=%d ctrl=0x%02x payload_len=%d crc=0x%04x",
+             master_id, self->id, (int)len, hdr->ctrl, (int)payload_len, crc);
+
     int written = bsp_ir_hw_write(frame, payload_len + 2);
     if (written <= 0) {
+        ESP_LOGE(TAG, "send_rsp failed: written=%d", written);
         return ESP_FAIL;
     }
 
     self->last_tx_tick = xTaskGetTickCount();
     self->stats.tx_frames++;
+
+    ESP_LOGI(TAG, "send_rsp OK: written=%d", written);
     return ESP_OK;
 }
 
@@ -126,7 +133,7 @@ void ir_slave_process_rx(ir_slave_t *self, const uint8_t *frame, size_t len) {
              type, req, hdr->master_id, hdr->slave_id, (int)payload_len);
 
     if (type == IR_CTRL_CMD || type == IR_CTRL_CMD_REQ) {
-        if (self->on_cmd && req) {
+        if (self->on_cmd) {
             uint8_t rsp[IR_PROTO_MAX_PAYLOAD];
             size_t rsp_len = 0;
 

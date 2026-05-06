@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "ir_proto_common.h"
 
 #define APP_IR_RX_TASK_STACK 4096
 #define APP_IR_RX_TASK_PRIO  3
@@ -34,16 +35,16 @@ static void app_ir_dispatch_rx(const uint8_t *data, size_t len)
     }
 }
 
-static int parse_frame(const uint8_t *buf, size_t buf_len, size_t *consumed)
+static int parse_proto_frame(const uint8_t *buf, size_t buf_len, size_t *consumed)
 {
-    if (buf_len < 2) {
+    if (buf_len < sizeof(ir_proto_hdr_t)) {
         *consumed = 0;
         return -1;
     }
 
     size_t pos = 0;
     while (pos < buf_len - 1) {
-        if (buf[pos] == 0xAA && buf[pos + 1] == 0x55) {
+        if (buf[pos] == 0x55 && buf[pos + 1] == 0xAA) {
             break;
         }
         pos++;
@@ -54,36 +55,33 @@ static int parse_frame(const uint8_t *buf, size_t buf_len, size_t *consumed)
         return -1;
     }
 
-    if (buf_len < 4) {
+    if (buf_len < sizeof(ir_proto_hdr_t)) {
         *consumed = 0;
         return -1;
     }
 
-    uint16_t payload_len = (uint16_t)buf[2] | ((uint16_t)buf[3] << 8);
-    if (payload_len > APP_IR_MAX_PAYLOAD) {
-        s_stats.rx_len_errors++;
-        *consumed = 2;
-        return -1;
-    }
+    const ir_proto_hdr_t *hdr = (const ir_proto_hdr_t *)buf;
+    size_t data_len = hdr->data_len;
+    size_t frame_len = sizeof(ir_proto_hdr_t) + data_len + 2;
 
-    size_t frame_len = APP_IR_FRAME_OVERHEAD + payload_len;
     if (buf_len < frame_len) {
         *consumed = 0;
         return -1;
     }
 
     uint16_t received_crc = (uint16_t)buf[frame_len - 2] | ((uint16_t)buf[frame_len - 1] << 8);
-    uint16_t calc_crc = crc16_calc(&buf[4], payload_len);
+    uint16_t calc_crc = crc16_calc(&buf[2], frame_len - 4);
 
     if (received_crc != calc_crc) {
         s_stats.rx_crc_errors++;
-        ESP_LOGW(TAG, "CRC error: rx=0x%04x calc=0x%04x", received_crc, calc_crc);
+        ESP_LOGW(TAG, "CRC error: rx=0x%04x calc=0x%04x len=%d ctrl=0x%02x data_len=%d",
+                 received_crc, calc_crc, (int)frame_len, hdr->ctrl, (int)data_len);
         *consumed = frame_len;
         return -1;
     }
 
     *consumed = frame_len;
-    return 4;
+    return 0;
 }
 
 static void ir_rx_task(void *arg)
@@ -97,7 +95,6 @@ static void ir_rx_task(void *arg)
     while (1) {
         int n = bsp_ir_hw_read(&buf[buf_pos], sizeof(buf) - buf_pos, pdMS_TO_TICKS(100));
         if (n > 0) {
-            ESP_LOGI(TAG, "raw recv %d bytes: %.*s", n, n, &buf[buf_pos]);
             buf_pos += (size_t)n;
         } else if (n < 0) {
             ESP_LOGW(TAG, "ir read error: %d", n);
@@ -108,17 +105,16 @@ static void ir_rx_task(void *arg)
             continue;
         }
 
-        while (buf_pos >= 4) {
+        while (buf_pos >= sizeof(ir_proto_hdr_t) + 2) {
             size_t consumed;
-            int offset = parse_frame(buf, buf_pos, &consumed);
+            int offset = parse_proto_frame(buf, buf_pos, &consumed);
 
             if (consumed == 0) {
                 break;
             }
 
-            if (offset > 0) {
-                size_t payload_len = (uint16_t)buf[2] | ((uint16_t)buf[3] << 8);
-                app_ir_dispatch_rx(&buf[offset], payload_len);
+            if (offset >= 0) {
+                app_ir_dispatch_rx(buf, consumed);
                 s_stats.rx_frames++;
             }
 

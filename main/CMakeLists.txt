@@ -34,6 +34,7 @@ idf_component_register(
         "app/app_cmd.c"
         "app/app_cmd_handlers.c"
         "app/app_cmd_test.c"
+        "app/app_biz.c"
     INCLUDE_DIRS
         "."
         "include"

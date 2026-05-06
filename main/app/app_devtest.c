@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 
+#include "app_biz.h"
 #include "app_espnow.h"
 #include "app_espnow_device.h"
 #include "app_twai.h"
@@ -30,6 +31,10 @@ static const char *TAG = "devtest";
 static volatile uint32_t s_heartbeat;
 static volatile uint32_t s_twai_tx_count;
 
+#if WIRELESSID_BIZ_TEST_ENABLE
+static biz_ctx_t s_biz_ctx;
+#endif
+
 #if WIRELESSID_ESPNOW_BASE_ENABLE
 static espnow_base_t s_base;
 static volatile uint32_t s_bcast_sent;
@@ -44,7 +49,7 @@ static volatile uint32_t s_data_received;
 #endif
 
 static void twai_rx_cb(const bsp_twai_msg_t *msg) {
-  char log_buf[48];
+  char log_buf[64];
   snprintf(log_buf, sizeof(log_buf), "RX 0x%03X [%02X %02X %02X %02X %02X %02X %02X %02X]",
            (unsigned)msg->id,
            msg->dlc > 0 ? msg->data[0] : 0, msg->dlc > 1 ? msg->data[1] : 0,
@@ -52,6 +57,11 @@ static void twai_rx_cb(const bsp_twai_msg_t *msg) {
            msg->dlc > 4 ? msg->data[4] : 0, msg->dlc > 5 ? msg->data[5] : 0,
            msg->dlc > 6 ? msg->data[6] : 0, msg->dlc > 7 ? msg->data[7] : 0);
   app_webui_log_twai(log_buf);
+
+#if WIRELESSID_BIZ_TEST_ENABLE
+  ESP_LOGI(TAG, "BIZ CAN RX: ID=0x%03X DLC=%d", (unsigned)msg->id, msg->dlc);
+  biz_can_rx_push(&s_biz_ctx, msg);
+#endif
 }
 
 static void espnow_rx_cb(const uint8_t *mac, const uint8_t *data, int len) {
@@ -341,6 +351,24 @@ void app_devtest_start(void) {
   espnow_device_set_data_cb(&s_device, device_data_handler);
   espnow_device_announce(&s_device);
   xTaskCreate(device_heartbeat_task, "en_hb", 2048, NULL, 3, NULL);
+#endif
+
+#if WIRELESSID_BIZ_TEST_ENABLE
+  {
+    biz_role_t role = WIRELESSID_BIZ_ROLE ? BIZ_ROLE_DEVICE : BIZ_ROLE_BASE;
+    uint8_t biz_id = WIRELESSID_BIZ_ID;
+
+    biz_init(&s_biz_ctx, role, biz_id);
+    biz_start(&s_biz_ctx);
+
+    ESP_LOGI(TAG, "biz test started: role=%s id=0x%02x",
+             role == BIZ_ROLE_BASE ? "BASE" : "DEVICE", biz_id);
+
+    char log_buf[48];
+    snprintf(log_buf, sizeof(log_buf), "BIZ:%s 0x%02X",
+             role == BIZ_ROLE_BASE ? "BASE" : "DEV", biz_id);
+    bsp_display_printf(1, 0, log_buf);
+  }
 #endif
 
   bsp_ws2812_play(BSP_WS2812_EFFECT_RAINBOW, 0, 0, 0, 128, 4000);
