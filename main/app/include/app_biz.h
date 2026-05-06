@@ -13,6 +13,7 @@
 #define BIZ_POLL_INTERVAL_MS  50
 #define BIZ_CMD_TIMEOUT_MS    10
 #define BIZ_MAX_DEVICES       4
+#define BIZ_DATA_TIMEOUT_MS   100
 
 typedef enum {
     BIZ_ROLE_BASE   = 0,
@@ -20,9 +21,15 @@ typedef enum {
 } biz_role_t;
 
 typedef struct {
-    bsp_twai_msg_t frames[BIZ_CAN_BUF_SIZE];
+    bsp_twai_msg_t frame;
+    uint32_t timestamp_ms;
+} can_frame_entry_t;
+
+typedef struct {
+    can_frame_entry_t entries[BIZ_CAN_BUF_SIZE];
     uint32_t head;
     uint32_t count;
+    uint32_t last_push_ms;
     SemaphoreHandle_t mutex;
 } can_ring_buf_t;
 
@@ -56,5 +63,7 @@ esp_err_t biz_start(biz_ctx_t *ctx);
 
 void biz_can_rx_push(biz_ctx_t *ctx, const bsp_twai_msg_t *msg);
 bool biz_can_get_latest(biz_ctx_t *ctx, bsp_twai_msg_t *msg);
+bool biz_can_get_latest_if_fresh(biz_ctx_t *ctx, bsp_twai_msg_t *msg, uint32_t max_age_ms);
+bool biz_can_has_fresh_data(biz_ctx_t *ctx, uint32_t max_age_ms);
 
 void biz_get_stats(biz_ctx_t *ctx, uint32_t *tx, uint32_t *rx, uint32_t *tx_err, uint32_t *rx_err);

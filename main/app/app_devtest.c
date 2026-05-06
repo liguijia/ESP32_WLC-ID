@@ -251,6 +251,7 @@ static void heartbeat_task(void *arg) {
     s_heartbeat++;
     ESP_LOGI(TAG, "hb=%" PRIu32, s_heartbeat);
 
+#if !WIRELESSID_BIZ_TEST_ENABLE
 #if WIRELESSID_ESPNOW_BASE_ENABLE
     espnow_base_check_peers(&s_base, ESPNOW_PEER_TIMEOUT_MS);
 
@@ -287,6 +288,7 @@ static void heartbeat_task(void *arg) {
 #if WIRELESSID_TWAI_TEST_TX_ENABLE
     bsp_display_printf(5, 0, "TWAI TX:%" PRIu32, s_twai_tx_count);
 #endif
+#endif /* !WIRELESSID_BIZ_TEST_ENABLE */
 
 #if WIRELESSID_ESPNOW_BASE_ENABLE
     {

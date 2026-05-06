@@ -603,3 +603,39 @@
   - 每个设备每 50ms 发送一次
   - 设备之间错开 12.5ms，避免冲突
 - 详细设计：见 `doc/wireless_charging_design.md` 第 11 节
+
+### 本轮进度更新（红外单向通讯实现，2026-05-06）
+
+- 实现内容：
+  - 恢复红外波特率为 4800
+  - 实现设备端单向发送 RSP 帧（包含 CAN 数据）
+  - 实现基站端单向接收 RSP 帧（解析并转发到 CAN）
+  - 复用现有 `ir_proto_hdr_t` 帧格式
+- 测试结果：✅ 成功
+  - 基站端能在约 3m 距离稳定接收
+  - 设备端持续发送 CAN 数据，基站端正确解析并转发
+- 优化内容：
+  - 添加 CAN 缓冲区时间戳机制
+  - 实现数据过期检查（100ms 超时）
+  - 无新数据时不发送，避免重复发送旧数据
+  - 禁用 `heartbeat_task` 的 OLED 显示，避免冲突
+- OLED 显示（行 0-4）：
+  - 基站端：标题、设备ID、IR接收的CAN ID、CAN数据、统计
+  - 设备端：标题、设备ID、发送的CAN ID、CAN数据
+- 关键 API：
+  - `biz_can_rx_push()`：推送 CAN 帧到缓冲区
+  - `biz_can_get_latest()`：获取最新帧
+  - `biz_can_get_latest_if_fresh()`：获取新鲜帧（带过期检查）
+  - `biz_can_has_fresh_data()`：检查是否有新鲜数据
+- 配置参数：
+  - `WIRELESSID_BIZ_ROLE`：0=基站，1=设备
+  - `WIRELESSID_BIZ_ID`：设备 ID（基站 0xA0，设备 0xD0-0xD3）
+  - `BIZ_DATA_TIMEOUT_MS`：数据过期时间（默认 100ms）
+- 文件变更：
+  - `main/app/include/app_biz.h`：添加时间戳和新鲜数据检查 API
+  - `main/app/app_biz.c`：实现单向通讯和缓冲区优化
+  - `main/app/app_devtest.c`：禁用 biz 模式下的 OLED 显示
+- 下一步：
+  - 测试多设备场景（4 个设备端同时发送）
+  - 实现设备端 ID 错开发送时序
+  - 添加设备在线检测和状态管理
